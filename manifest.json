@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "AI Web UI Bridge",
+  "version": "1.0",
+  "description": "Bridge chat between ChatGPT, Claude, and Gemini",
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://*.chatgpt.com/*",
+    "https://openai.com/*",
+    "https://*.openai.com/*",
+    "https://claude.ai/*",
+    "https://*.claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://*.gemini.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "AI Web UI Bridge"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*", "https://*.chatgpt.com/*", "https://openai.com/*", "https://*.openai.com/*"],
+      "js": ["content/shared.js", "content/chatgpt.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://claude.ai/*", "https://*.claude.ai/*"],
+      "js": ["content/shared.js", "content/claude.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://gemini.google.com/*", "https://*.gemini.google.com/*"],
+      "js": ["content/shared.js", "content/gemini.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

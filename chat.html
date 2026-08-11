@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Web UI Bridge</title>
+    <link rel="stylesheet" href="chat.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>AI Bridge</h2>
+                <div class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span id="connection-status">Ready</span>
+                </div>
+            </div>
+            
+            <div class="agents-status">
+                <div class="agent" id="agent-gpt">
+                    <div class="agent-icon gpt-color">GPT</div>
+                    <span>ChatGPT</span>
+                </div>
+                <div class="agent" id="agent-claude">
+                    <div class="agent-icon claude-color">CL</div>
+                    <span>Claude</span>
+                </div>
+                <div class="agent" id="agent-gemini">
+                    <div class="agent-icon gemini-color">GEM</div>
+                    <span>Gemini</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-area">
+            <header class="chat-header">
+                <h1 id="current-action">Start a Broadcast</h1>
+                <p id="action-subtitle">Enter a prompt to initiate the multi-agent round-robin discussion.</p>
+            </header>
+
+            <div class="messages-container" id="messages-container">
+                <!-- Messages will be injected here -->
+                <div class="welcome-message">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="welcome-icon"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12 2.1 7.1"></path><path d="M12 12l9.9 4.9"></path></svg>
+                    <h3>Welcome to the AI Bridge</h3>
+                    <p>Automate your local web tabs to watch ChatGPT, Claude, and Gemini collaborate in real-time without API keys.</p>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <textarea id="prompt-input" placeholder="Type your initial prompt here to start the broadcast..." rows="1"></textarea>
+                <button id="broadcast-btn">Broadcast</button>
+            </div>
+        </main>
+    </div>
+    <script src="chat.js"></script>
+</body>
+</html>
