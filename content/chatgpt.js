@@ -2,73 +2,61 @@
 
 (function() {
     const INPUT_SELECTORS = [
-        '#prompt-textarea',                          // main textarea/div
-        'div[id="prompt-textarea"]',                  // explicit div
-        '#prompt-textarea p',                        // paragraph inside prosemirror
-        'form textarea',                             // fallback textarea
-        '.ProseMirror[contenteditable="true"]',       // ProseMirror editor
+        '#prompt-textarea',
+        'div[id="prompt-textarea"]',
+        '.ProseMirror[contenteditable="true"]',
+        'form textarea',
     ];
 
     const SEND_BUTTON_SELECTORS = [
-        'button[data-testid="send-button"]',          // primary
-        'button[aria-label="Send prompt"]',            // aria label variant
-        'button[aria-label="Send"]',                   // short aria label
-        'form button:not([disabled])',                 // generic form button
+        'button[data-testid="send-button"]',
+        'button[aria-label="Send prompt"]',
+        'button[aria-label="Send"]',
     ];
 
     const RESPONSE_SELECTORS = [
-        '[data-message-author-role="assistant"] .markdown',     // assistant markdown blocks
-        '[data-message-author-role="assistant"]',               // assistant message container
-        '.markdown.prose',                                       // legacy selector
-        '.agent-turn .markdown',                                 // agent turn blocks
-        'article .markdown',                                     // article-wrapped markdown
+        '[data-message-author-role="assistant"] .markdown',
+        '[data-message-author-role="assistant"]',
+        '.markdown.prose',
+        'article .markdown',
     ];
 
     window.AIBridgeUtils.setupMessageListener(async (promptText) => {
         const utils = window.AIBridgeUtils;
-        console.log('[ChatGPT] Starting prompt injection...');
+        console.log('[ChatGPT] Starting...');
 
-        // 1. Find the input field
+        // 1. Count existing responses BEFORE sending
+        const before = utils.countElements(RESPONSE_SELECTORS);
+        console.log('[ChatGPT] Existing responses:', before.count, 'using selector:', before.selector);
+
+        // 2. Find and fill input
         const input = await utils.waitForElement(INPUT_SELECTORS);
-        console.log('[ChatGPT] Found input:', input.tagName, input.id, input.className);
-
-        // 2. Inject text
+        console.log('[ChatGPT] Input found:', input.tagName, input.id);
         utils.simulateInput(input, promptText);
-        console.log('[ChatGPT] Text injected, waiting for send button...');
 
-        // 3. Wait a moment for the send button to become active
-        await new Promise(r => setTimeout(r, 800));
+        // 3. Wait for send button to activate
+        await new Promise(r => setTimeout(r, 1000));
 
-        // 4. Find and click send button
-        const sendBtn = await utils.waitForElement(SEND_BUTTON_SELECTORS, 5000);
-        console.log('[ChatGPT] Found send button:', sendBtn.tagName, sendBtn.className);
-        sendBtn.click();
-        console.log('[ChatGPT] Send button clicked. Waiting for response...');
+        // 4. Click send
+        const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
+        if (!sendBtn) throw new Error('ChatGPT send button not found');
+        utils.clickButton(sendBtn);
+        console.log('[ChatGPT] Prompt sent!');
 
-        // 5. Wait for new response to appear
-        await new Promise(r => setTimeout(r, 2000));
+        // 5. Wait for a NEW response element to appear (count increases)
+        const activeSelector = before.count > 0 ? before.selector : RESPONSE_SELECTORS;
+        console.log('[ChatGPT] Waiting for new response...');
+        const newResponseEl = await utils.waitForNewElement(activeSelector, before.count, 60000);
+        console.log('[ChatGPT] New response element appeared!');
 
-        // 6. Wait for the response to finish generating
-        // Look for a "stop generating" button to disappear, or just watch mutations
-        let responseEl = utils.getLastMatch(RESPONSE_SELECTORS);
-        if (!responseEl) {
-            console.log('[ChatGPT] No response element found yet, waiting...');
-            responseEl = await utils.waitForElement(RESPONSE_SELECTORS, 30000);
-        }
+        // 6. Wait for it to stop generating
+        await utils.waitForMutationToStop(newResponseEl.parentElement || newResponseEl, 3000, 120000);
+        console.log('[ChatGPT] Generation complete.');
 
-        // Observe the response for changes to stop
-        await utils.waitForMutationToStop(
-            responseEl.parentElement || responseEl,
-            { childList: true, characterData: true, subtree: true },
-            3000, 120000
-        );
-        console.log('[ChatGPT] Response generation appears complete.');
-
-        // 7. Grab the final text from the LAST response
+        // 7. Grab the LAST response text
         const finalEl = utils.getLastMatch(RESPONSE_SELECTORS);
-        const text = finalEl ? finalEl.innerText.trim() : 'Error: Could not find response text.';
-        console.log('[ChatGPT] Scraped text length:', text.length);
-
+        const text = finalEl ? finalEl.innerText.trim() : 'Error: Could not scrape response';
+        console.log('[ChatGPT] Scraped:', text.substring(0, 100) + '...');
         return text;
     });
 })();

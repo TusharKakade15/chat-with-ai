@@ -2,95 +2,64 @@
 
 (function() {
     const INPUT_SELECTORS = [
-        '.ql-editor[contenteditable="true"]',             // Quill editor
-        'rich-textarea [contenteditable="true"]',          // rich-textarea wrapper
-        '.text-input-field [contenteditable="true"]',      // text input field
-        'div[contenteditable="true"]',                     // generic contenteditable
-        '.input-area textarea',                            // fallback textarea
+        '.ql-editor[contenteditable="true"]',
+        'rich-textarea [contenteditable="true"]',
+        '.text-input-field [contenteditable="true"]',
+        'div[contenteditable="true"]',
     ];
 
     const SEND_BUTTON_SELECTORS = [
-        'button[aria-label="Send message"]',               // primary
-        'button[aria-label="Send"]',                       // short variant
-        'button.send-button',                              // class-based
-        '.input-area button',                              // input area button
+        'button[aria-label="Send message"]',
+        'button[aria-label="Send"]',
+        'button.send-button',
     ];
 
     const RESPONSE_SELECTORS = [
-        'message-content .markdown',                       // message-content with markdown
-        'message-content',                                 // message-content element
-        '.model-response-text',                            // model response text
-        '.response-container',                             // response container
-        '.message-body',                                   // message body
+        'message-content .markdown',
+        'message-content',
+        '.model-response-text',
+        '.response-container',
     ];
 
     window.AIBridgeUtils.setupMessageListener(async (promptText) => {
         const utils = window.AIBridgeUtils;
-        console.log('[Gemini] Starting prompt injection...');
+        console.log('[Gemini] Starting...');
 
-        // 1. Find the input field
+        // 1. Count existing responses
+        const before = utils.countElements(RESPONSE_SELECTORS);
+        console.log('[Gemini] Existing responses:', before.count);
+
+        // 2. Find and fill input
         const input = await utils.waitForElement(INPUT_SELECTORS);
-        console.log('[Gemini] Found input:', input.tagName, input.className);
-
-        // 2. Inject text
+        console.log('[Gemini] Input found:', input.tagName, input.className);
         utils.simulateInput(input, promptText);
-        console.log('[Gemini] Text injected, waiting for send button...');
 
         // 3. Wait for send button
-        await new Promise(r => setTimeout(r, 800));
+        await new Promise(r => setTimeout(r, 1000));
 
-        // 4. Find and click send button
-        let sendBtn = null;
-        for (const sel of SEND_BUTTON_SELECTORS) {
-            sendBtn = document.querySelector(sel);
-            if (sendBtn) {
-                console.log('[Gemini] Found send button via:', sel);
-                break;
-            }
-        }
+        // 4. Click send
+        const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
+        if (!sendBtn) throw new Error('Gemini send button not found');
+        utils.clickButton(sendBtn);
+        console.log('[Gemini] Prompt sent!');
 
-        if (!sendBtn) {
-            // Brute-force search
-            const allButtons = document.querySelectorAll('button');
-            for (const btn of allButtons) {
-                const label = (btn.getAttribute('aria-label') || '').toLowerCase();
-                if (label.includes('send')) {
-                    sendBtn = btn;
-                    console.log('[Gemini] Found send button via brute-force search');
-                    break;
-                }
-            }
-        }
-
-        if (!sendBtn) {
-            throw new Error('Could not find Gemini send button');
-        }
-
-        sendBtn.click();
-        console.log('[Gemini] Send button clicked. Waiting for response...');
-
-        // 5. Wait for response
-        await new Promise(r => setTimeout(r, 2000));
-
-        // 6. Wait for the response to finish
-        let responseEl = utils.getLastMatch(RESPONSE_SELECTORS);
-        if (!responseEl) {
-            console.log('[Gemini] No response element found yet, waiting...');
-            responseEl = await utils.waitForElement(RESPONSE_SELECTORS, 30000);
-        }
-
-        await utils.waitForMutationToStop(
-            responseEl.parentElement || responseEl,
-            { childList: true, characterData: true, subtree: true },
-            3000, 120000
+        // 5. Wait for a NEW response
+        console.log('[Gemini] Waiting for response...');
+        const newResponseEl = await utils.waitForNewElement(
+            before.count > 0 ? before.selector : RESPONSE_SELECTORS,
+            before.count,
+            60000
         );
-        console.log('[Gemini] Response generation appears complete.');
+        console.log('[Gemini] New response appeared!');
 
-        // 7. Grab the final text
+        // 6. Wait for generation to finish
+        await utils.waitForMutationToStop(newResponseEl.parentElement || newResponseEl, 3000, 120000);
+        console.log('[Gemini] Generation complete.');
+
+        // 7. Grab the last response
         const finalEl = utils.getLastMatch(RESPONSE_SELECTORS);
-        const text = finalEl ? finalEl.innerText.trim() : 'Error: Could not find response text.';
-        console.log('[Gemini] Scraped text length:', text.length);
-
+        const text = finalEl ? finalEl.innerText.trim() : 'Error: Could not scrape response';
+        console.log('[Gemini] Scraped:', text.substring(0, 100) + '...');
         return text;
     });
 })();
