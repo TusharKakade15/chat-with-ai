@@ -1,4 +1,5 @@
 // Gemini Content Script
+// Uses TEXT-DIFF approach same as ChatGPT — captures text before, finds new text after
 
 (function() {
     const INPUT_SELECTORS = [
@@ -19,160 +20,95 @@
         const utils = window.AIBridgeUtils;
         console.log('[Gemini] Starting...');
 
-        // 1. Find and fill input
+        // 1. Capture ALL text on the page BEFORE sending
+        const textBefore = document.body.innerText;
+        console.log('[Gemini] Page text before (length):', textBefore.length);
+
+        // 2. Find and fill input
         const input = await utils.waitForElement(INPUT_SELECTORS);
         console.log('[Gemini] Input found:', input.tagName, input.className);
         utils.simulateInput(input, promptText);
 
-        // 2. Wait then send
+        // 3. Wait then send
         await new Promise(r => setTimeout(r, 1000));
-
         let sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
         if (sendBtn) {
             utils.clickButton(sendBtn);
             console.log('[Gemini] Sent via button');
         } else {
-            console.log('[Gemini] Send button not found, trying Enter...');
+            console.log('[Gemini] Trying Enter key...');
             input.focus();
             input.dispatchEvent(new KeyboardEvent('keydown', { 
                 key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true 
             }));
         }
 
-        // 3. Poll for MODEL response text (NOT user message)
-        console.log('[Gemini] Polling for model response...');
-        const responseText = await pollForGeminiResponse(60000);
+        // 4. Poll for NEW text that wasn't on the page before
+        console.log('[Gemini] Polling for new text...');
+        const responseText = await pollForNewText(textBefore, promptText, 90000);
 
-        console.log('[Gemini] Final text length:', responseText.length);
-        console.log('[Gemini] Full text:', responseText);
+        console.log('[Gemini] Final response length:', responseText.length);
+        console.log('[Gemini] Response:', responseText);
         return responseText || 'Error: Could not find Gemini response';
     });
 
-    // Poll the DOM every 2 seconds looking for Gemini's MODEL response
-    function pollForGeminiResponse(timeout) {
+    function pollForNewText(textBefore, promptText, timeout) {
         return new Promise((resolve) => {
             const start = Date.now();
-            let lastFoundText = '';
+            const beforeLines = new Set(textBefore.split('\n').map(l => l.trim()).filter(l => l.length > 0));
+            const promptLines = new Set(promptText.split('\n').map(l => l.trim()).filter(l => l.length > 0));
+            
+            let lastNewText = '';
             let stableCount = 0;
 
             const check = () => {
-                const text = tryScrapGeminiResponse();
+                const textAfter = document.body.innerText;
+                const afterLines = textAfter.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-                if (text.length > 10) {
-                    if (text === lastFoundText) {
+                const newLines = afterLines.filter(line => {
+                    if (beforeLines.has(line)) return false;
+                    if (promptLines.has(line)) return false;
+                    // Skip Gemini UI chrome
+                    if (line === 'Gemini is AI and can make mistakes.') return false;
+                    if (line === 'Gemini can make mistakes.') return false;
+                    if (line === 'Ask Gemini') return false;
+                    if (line.length < 3) return false;
+                    // Skip system instruction fragments
+                    if (line.includes('[SYSTEM INSTRUCTION')) return false;
+                    if (line.includes('User asked:')) return false;
+                    if (line.includes('ChatGPT said:')) return false;
+                    if (line.includes('Claude said:')) return false;
+                    if (line.includes('Provide a final synthesis')) return false;
+                    return true;
+                });
+
+                const newText = newLines.join('\n').trim();
+                console.log('[Gemini] Poll: found', newLines.length, 'new lines, length:', newText.length);
+
+                if (newText.length > 10) {
+                    if (newText === lastNewText) {
                         stableCount++;
                         if (stableCount >= 3) {
-                            console.log('[Gemini] Response stable after', stableCount, 'checks');
-                            resolve(text);
+                            console.log('[Gemini] Response stable for', stableCount, 'polls');
+                            resolve(newText);
                             return;
                         }
                     } else {
                         stableCount = 0;
-                        lastFoundText = text;
+                        lastNewText = newText;
                     }
                 }
 
                 if (Date.now() - start > timeout) {
-                    resolve(lastFoundText || text || '');
+                    console.log('[Gemini] Timeout reached');
+                    resolve(lastNewText || newText || '');
                     return;
                 }
 
                 setTimeout(check, 2000);
             };
 
-            setTimeout(check, 3000);
+            setTimeout(check, 5000);
         });
-    }
-
-    function tryScrapGeminiResponse() {
-        let text = '';
-
-        // Log all potential elements for debugging
-        const debugTags = ['model-response', 'message-content', 'user-query', '.response-container'];
-        for (const sel of debugTags) {
-            const count = document.querySelectorAll(sel).length;
-            if (count > 0) console.log(`[Gemini] "${sel}" found: ${count}`);
-        }
-
-        // Strategy 1: model-response web component (THE correct Gemini element)
-        let els = document.querySelectorAll('model-response');
-        if (els.length > 0) {
-            text = els[els.length - 1].innerText.trim();
-            if (text.length > 5) {
-                console.log('[Gemini] Found via model-response tag, length:', text.length);
-                return text;
-            }
-        }
-
-        // Strategy 2: message-content web component
-        els = document.querySelectorAll('message-content');
-        if (els.length > 0) {
-            // Filter out user messages — only take the LAST message-content
-            // that is NOT inside a user-query element
-            for (let i = els.length - 1; i >= 0; i--) {
-                if (!els[i].closest('user-query')) {
-                    text = els[i].innerText.trim();
-                    if (text.length > 5) {
-                        console.log('[Gemini] Found via message-content (non-user), length:', text.length);
-                        return text;
-                    }
-                }
-            }
-        }
-
-        // Strategy 3: .markdown class (common for rendered responses)
-        els = document.querySelectorAll('.markdown');
-        if (els.length > 0) {
-            text = els[els.length - 1].innerText.trim();
-            if (text.length > 5) {
-                console.log('[Gemini] Found via .markdown, length:', text.length);
-                return text;
-            }
-        }
-
-        // Strategy 4: Specific Gemini response containers
-        els = document.querySelectorAll('.response-container, .model-response-text, .response-content');
-        if (els.length > 0) {
-            text = els[els.length - 1].innerText.trim();
-            if (text.length > 5) {
-                console.log('[Gemini] Found via response containers, length:', text.length);
-                return text;
-            }
-        }
-
-        // Strategy 5: Brute-force — find text inside main that's NOT the user prompt
-        // and NOT UI chrome
-        const mainArea = document.querySelector('main') || document.querySelector('.conversation-container') || document.body;
-        const allDivs = mainArea.querySelectorAll('div, p, span');
-        
-        for (let i = allDivs.length - 1; i >= 0; i--) {
-            const el = allDivs[i];
-            const t = el.innerText.trim();
-            
-            // Skip if this is inside a user query / input area
-            if (el.closest('user-query') || 
-                el.closest('rich-textarea') || 
-                el.closest('.input-area') ||
-                el.closest('[contenteditable]')) {
-                continue;
-            }
-            
-            // Skip prompt text and UI chrome
-            if (t.length > 20 && 
-                t.length < 3000 &&
-                !t.includes('[SYSTEM INSTRUCTION') &&
-                !t.includes('User asked:') &&
-                !t.includes('ChatGPT said:') &&
-                !t.includes('Claude said:') &&
-                !t.includes('Provide a final synthesis') &&
-                !t.includes('Ask Gemini') &&
-                !t.includes('Gemini can make mistakes')) {
-                text = t;
-                console.log('[Gemini] Found via brute-force, length:', text.length);
-                return text;
-            }
-        }
-
-        return text;
     }
 })();
