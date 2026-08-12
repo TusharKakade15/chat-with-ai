@@ -127,10 +127,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // If text is provided, the agent finished generating
-            if (message.text && message.currentAgent) {
+            if (message.text !== undefined && message.text !== null && message.currentAgent) {
                 removeTypingIndicator();
                 const agentClass = message.currentAgent.toLowerCase();
-                appendMessage(message.currentAgent, message.text, 'ai', agentClass);
+                const displayText = message.text || '(No response captured)';
+                appendMessage(message.currentAgent, displayText, 'ai', agentClass);
             }
         }
     });
