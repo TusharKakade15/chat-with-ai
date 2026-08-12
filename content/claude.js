@@ -8,17 +8,11 @@
         'div[contenteditable="true"]',
     ];
 
-    const SEND_BUTTON_SELECTORS = [
-        'button[aria-label="Send Message"]',
-        'button[aria-label="Send message"]',
-        'button[aria-label="Send"]',
-    ];
-
     const RESPONSE_SELECTORS = [
-        '[data-is-streaming]',
         '.font-claude-message',
+        '[data-is-streaming]',
         '.grid-cols-1 .prose',
-        '.grid .whitespace-pre-wrap',
+        '.whitespace-pre-wrap',
     ];
 
     window.AIBridgeUtils.setupMessageListener(async (promptText) => {
@@ -29,104 +23,160 @@
         const before = utils.countElements(RESPONSE_SELECTORS);
         console.log('[Claude] Existing responses:', before.count);
 
-        // 2. Find and fill input
+        // 2. Find the input field
         const input = await utils.waitForElement(INPUT_SELECTORS);
         console.log('[Claude] Input found:', input.tagName, input.className);
 
-        // For Claude's ProseMirror, we need a special approach:
-        // Focus, clear, then use keyboard events to paste
+        // 3. Type text into Claude's ProseMirror editor
+        // Strategy: Focus, clear, paste via ClipboardEvent, then fallback to execCommand
         input.focus();
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 300));
 
-        // Clear existing content
+        // Select all existing content
         const selection = window.getSelection();
         const range = document.createRange();
         range.selectNodeContents(input);
         selection.removeAllRanges();
         selection.addRange(range);
 
-        // Create a paste event with our text
-        const clipboardData = new DataTransfer();
-        clipboardData.setData('text/plain', promptText);
-        const pasteEvent = new ClipboardEvent('paste', {
-            bubbles: true,
-            cancelable: true,
-            clipboardData: clipboardData
-        });
-        input.dispatchEvent(pasteEvent);
-        console.log('[Claude] Text pasted via ClipboardEvent');
+        // Try Clipboard paste (ProseMirror handles this well)
+        try {
+            const clipboardData = new DataTransfer();
+            clipboardData.setData('text/plain', promptText);
+            const pasteEvent = new ClipboardEvent('paste', {
+                bubbles: true,
+                cancelable: true,
+                clipboardData: clipboardData
+            });
+            input.dispatchEvent(pasteEvent);
+            console.log('[Claude] Pasted via ClipboardEvent');
+        } catch (e) {
+            console.log('[Claude] ClipboardEvent failed, using execCommand');
+        }
 
-        // Fallback: if paste didn't work, try execCommand
         await new Promise(r => setTimeout(r, 500));
-        if (input.textContent.trim().length < 10) {
-            console.log('[Claude] Paste may not have worked, trying execCommand...');
-            input.innerHTML = '';
+
+        // Check if text was actually inserted
+        const inputText = input.textContent || input.innerText || '';
+        if (inputText.trim().length < 10) {
+            console.log('[Claude] Paste may not have worked (text length:', inputText.length, '), trying execCommand...');
             input.focus();
-            document.execCommand('insertText', false, promptText);
+            input.innerHTML = '';
+
+            // Create a paragraph element with the text (ProseMirror expects <p> tags)
+            const p = document.createElement('p');
+            p.textContent = promptText;
+            input.appendChild(p);
             input.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
-        // 3. Wait for send button to be enabled
+        console.log('[Claude] Input text length:', (input.textContent || '').length);
+
+        // 4. Wait for UI to register the input
         await new Promise(r => setTimeout(r, 1000));
 
-        // 4. Find and click send
-        const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
-        if (!sendBtn) throw new Error('Claude send button not found');
-        console.log('[Claude] Send button found, disabled?', sendBtn.disabled);
+        // 5. Send the message using ENTER KEY (most reliable for Claude)
+        // Claude sends on Enter (without Shift)
+        console.log('[Claude] Pressing Enter to send...');
+        input.focus();
+        
+        // Dispatch keydown Enter event
+        const enterDown = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true
+        });
+        input.dispatchEvent(enterDown);
+        
+        const enterPress = new KeyboardEvent('keypress', {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true
+        });
+        input.dispatchEvent(enterPress);
+        
+        const enterUp = new KeyboardEvent('keyup', {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true
+        });
+        input.dispatchEvent(enterUp);
 
-        // Try clicking multiple times with delays (Claude's button can be sluggish)
-        utils.clickButton(sendBtn);
+        // Also try clicking send button as backup
         await new Promise(r => setTimeout(r, 500));
-
-        // Verify if the button is still clickable (meaning click didn't register)
-        const stillThere = utils.findSendButton(SEND_BUTTON_SELECTORS);
-        if (stillThere && !stillThere.disabled) {
-            console.log('[Claude] Retrying click...');
-            utils.clickButton(stillThere);
+        const sendBtn = utils.findSendButton([
+            'button[aria-label="Send Message"]',
+            'button[aria-label="Send message"]',
+            'button[aria-label="Send"]',
+        ]);
+        if (sendBtn) {
+            console.log('[Claude] Also clicking send button as backup...');
+            utils.clickButton(sendBtn);
         }
 
-        console.log('[Claude] Prompt sent!');
+        console.log('[Claude] Message sent!');
 
-        // 5. Wait for a NEW response to appear
+        // 6. Wait for response
         console.log('[Claude] Waiting for response...');
         await new Promise(r => setTimeout(r, 3000));
 
-        // For Claude, just wait for content to stabilize on the page
-        // Watch the entire main content area
+        // Wait for page to stabilize (watch for mutations to stop)
         const mainContent = document.querySelector('main') || document.body;
-        await utils.waitForMutationToStop(mainContent, 4000, 120000);
+        await utils.waitForMutationToStop(mainContent, 5000, 120000);
         console.log('[Claude] Page stabilized.');
 
-        // 6. Grab the last response
-        // Try multiple approaches to find Claude's response text
+        // 7. Scrape the response using multiple strategies
         let text = '';
 
-        // Approach 1: font-claude-message
+        // Strategy 1: font-claude-message (Claude's specific message class)
         let els = document.querySelectorAll('.font-claude-message');
         if (els.length > 0) {
             text = els[els.length - 1].innerText.trim();
+            console.log('[Claude] Found via .font-claude-message, length:', text.length);
         }
 
-        // Approach 2: data-is-streaming elements
-        if (!text) {
-            els = document.querySelectorAll('[data-is-streaming] .grid');
-            if (els.length > 0) text = els[els.length - 1].innerText.trim();
+        // Strategy 2: data-is-streaming blocks
+        if (!text || text.length < 5) {
+            els = document.querySelectorAll('[data-is-streaming]');
+            if (els.length > 0) {
+                text = els[els.length - 1].innerText.trim();
+                console.log('[Claude] Found via [data-is-streaming], length:', text.length);
+            }
         }
 
-        // Approach 3: Look for the last large text block that's not the user message
-        if (!text) {
-            const allDivs = document.querySelectorAll('.prose, .whitespace-pre-wrap');
-            if (allDivs.length > 0) text = allDivs[allDivs.length - 1].innerText.trim();
+        // Strategy 3: Look for prose content blocks
+        if (!text || text.length < 5) {
+            els = document.querySelectorAll('.prose');
+            if (els.length > 0) {
+                text = els[els.length - 1].innerText.trim();
+                console.log('[Claude] Found via .prose, length:', text.length);
+            }
         }
 
-        // Approach 4: Last resort - find the last long text block on the page
-        if (!text) {
-            const paragraphs = document.querySelectorAll('p');
-            const longTexts = Array.from(paragraphs).filter(p => p.innerText.length > 50);
-            if (longTexts.length > 0) text = longTexts[longTexts.length - 1].innerText.trim();
+        // Strategy 4: Any substantial text block that appeared after our message
+        if (!text || text.length < 5) {
+            els = document.querySelectorAll('.whitespace-pre-wrap, .break-words');
+            for (let i = els.length - 1; i >= 0; i--) {
+                const t = els[i].innerText.trim();
+                if (t.length > 20 && !t.includes('[SYSTEM INSTRUCTION')) {
+                    text = t;
+                    console.log('[Claude] Found via fallback scan, length:', text.length);
+                    break;
+                }
+            }
         }
 
-        console.log('[Claude] Scraped:', text.substring(0, 100) + '...');
+        console.log('[Claude] Final text length:', text.length);
+        console.log('[Claude] First 200 chars:', text.substring(0, 200));
         return text || 'Error: Could not scrape Claude response';
     });
 })();
