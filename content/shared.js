@@ -33,28 +33,54 @@ window.AIBridgeUtils = {
         });
     },
 
-    // Type into a contenteditable or textarea using multiple strategies
+    // Safe input simulation that works in both active and background tabs
     simulateInput: function(element, text) {
         element.focus();
 
         if (element.contentEditable === 'true' || element.getAttribute('contenteditable') === 'true') {
-            const selection = window.getSelection();
-            const range = document.createRange();
-            range.selectNodeContents(element);
-            selection.removeAllRanges();
-            selection.addRange(range);
-
-            const inserted = document.execCommand('insertText', false, text);
-            if (!inserted) {
-                element.textContent = text;
+            let inserted = false;
+            try {
+                const selection = window.getSelection();
+                if (selection) {
+                    const range = document.createRange();
+                    range.selectNodeContents(element);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    inserted = document.execCommand('insertText', false, text);
+                }
+            } catch (e) {
+                inserted = false;
             }
+
+            // If execCommand failed (standard behavior in background tabs), build structured paragraphs
+            if (!inserted || element.textContent.trim().length === 0) {
+                element.innerHTML = '';
+                const lines = text.split('\n');
+                lines.forEach(line => {
+                    const p = document.createElement('p');
+                    if (line.trim() === '') {
+                        p.innerHTML = '<br>';
+                    } else {
+                        p.textContent = line;
+                    }
+                    element.appendChild(p);
+                });
+            }
+
+            // Dispatch full input events so frameworks (Angular, React, Vue, ProseMirror, Quill) detect the change
+            element.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertFromPaste', data: text }));
+            element.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertFromPaste', data: text }));
             element.dispatchEvent(new Event('input', { bubbles: true }));
             element.dispatchEvent(new Event('change', { bubbles: true }));
         } else {
             const setter = Object.getOwnPropertyDescriptor(
                 window.HTMLTextAreaElement.prototype, 'value'
             ).set;
-            setter.call(element, text);
+            if (setter) {
+                setter.call(element, text);
+            } else {
+                element.value = text;
+            }
             element.dispatchEvent(new Event('input', { bubbles: true }));
             element.dispatchEvent(new Event('change', { bubbles: true }));
         }
@@ -87,9 +113,20 @@ window.AIBridgeUtils = {
         return null;
     },
 
-    // Click a button safely without duplicate events
+    // Click a button safely
     clickButton: function(btn) {
+        if (btn.disabled) {
+            btn.disabled = false;
+            btn.removeAttribute('disabled');
+        }
+        if (btn.getAttribute('aria-disabled') === 'true') {
+            btn.setAttribute('aria-disabled', 'false');
+        }
         btn.focus();
+        btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+        btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
         btn.click();
         console.log('[AIBridge] Button clicked');
     },

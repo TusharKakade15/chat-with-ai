@@ -12,7 +12,11 @@
     const SEND_BUTTON_SELECTORS = [
         'button[aria-label="Send message"]',
         'button[aria-label="Send"]',
+        'button[aria-label*="Send"]',
+        'button[aria-label*="send"]',
         'button.send-button',
+        '.send-button-container button',
+        'rich-textarea ~ * button',
     ];
 
     function cleanExtractedText(rawText) {
@@ -31,19 +35,48 @@
             if (trimmed === 'Gemini can make mistakes.') return false;
             if (trimmed === 'Ask Gemini') return false;
             if (trimmed === 'New chat' || trimmed === 'Search chats') return false;
+            if (trimmed === 'Copy' || trimmed === 'Share' || trimmed === 'Good response' || trimmed === 'Bad response') return false;
             return true;
         });
         return cleanedLines.join('\n').trim();
     }
 
     function extractGeminiTextDirectly() {
-        const responseEls = document.querySelectorAll('model-response, message-content:not(user-query message-content), .model-response-text');
+        const responseEls = document.querySelectorAll('model-response, message-content:not(user-query message-content), .model-response-text, .response-container');
         if (responseEls.length > 0) {
             const last = responseEls[responseEls.length - 1];
+            // Prefer markdown element inside response
+            const md = last.querySelector('.markdown, [class*="markdown"]');
+            if (md) {
+                const text = cleanExtractedText(md.innerText);
+                if (text.length > 0) return text;
+            }
             const text = cleanExtractedText(last.innerText);
             if (text.length > 0) return text;
         }
         return '';
+    }
+
+    function injectGeminiInput(editor, text) {
+        editor.focus();
+        editor.innerHTML = '';
+        const lines = text.split('\n');
+        lines.forEach(line => {
+            const p = document.createElement('p');
+            if (line.trim() === '') {
+                p.innerHTML = '<br>';
+            } else {
+                p.textContent = line;
+            }
+            editor.appendChild(p);
+        });
+
+        // Trigger Angular / Quill events
+        editor.dispatchEvent(new Event('focus', { bubbles: true }));
+        editor.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertFromPaste', data: text }));
+        editor.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertFromPaste', data: text }));
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        editor.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     window.AIBridgeUtils.setupMessageListener(async (promptText) => {
@@ -56,18 +89,25 @@
         // 1. Find and fill input
         const input = await utils.waitForElement(INPUT_SELECTORS);
         console.log('[Gemini] Input found:', input.tagName, input.className);
-        utils.simulateInput(input, promptText);
+        injectGeminiInput(input, promptText);
 
-        // 2. Wait then send once
-        await new Promise(r => setTimeout(r, 800));
+        // 2. Wait for Angular change detection to activate send button
+        await new Promise(r => setTimeout(r, 1000));
+
         let sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
         if (sendBtn) {
             utils.clickButton(sendBtn);
-            console.log('[Gemini] Sent via send button (single click)');
+            console.log('[Gemini] Sent via send button');
         } else {
             console.log('[Gemini] Send button not found, sending via Enter key...');
             input.focus();
             input.dispatchEvent(new KeyboardEvent('keydown', { 
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true 
+            }));
+            input.dispatchEvent(new KeyboardEvent('keypress', { 
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true 
+            }));
+            input.dispatchEvent(new KeyboardEvent('keyup', { 
                 key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true 
             }));
         }
