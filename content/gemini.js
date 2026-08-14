@@ -9,6 +9,17 @@
         'div[contenteditable="true"]',
     ];
 
+    const SEND_BUTTON_SELECTORS = [
+        'button[aria-label="Send message"]',
+        'button[aria-label="Send"]',
+        'button[aria-label*="Send"]',
+        'button[aria-label*="send"]',
+        'button.send-button',
+        '.send-button-container button',
+        'rich-textarea ~ * button',
+        'button:has(mat-icon[fonticon="send"])',
+    ];
+
     function cleanExtractedText(rawText) {
         if (!rawText) return '';
         const lines = rawText.split('\n');
@@ -29,12 +40,19 @@
             if (trimmed === 'Gemini can make mistakes.') return false;
             if (trimmed === 'Ask Gemini') return false;
             if (trimmed === 'New chat' || trimmed === 'Search chats') return false;
+            if (trimmed === 'Upgrade' || trimmed === 'Notebooks' || trimmed === 'New notebook' || trimmed === 'Recents' || trimmed === 'Flash') return false;
             if (trimmed === 'Copy' || trimmed === 'Share' || trimmed === 'Good response' || trimmed === 'Bad response' || trimmed === 'Modify response') return false;
             return true;
         });
         const result = cleanedLines.join('\n').trim();
         if (result === 'You said' || result === 'Gemini said' || result.length < 10) return '';
         return result;
+    }
+
+    function isSidebarGarbage(text) {
+        if (!text) return true;
+        if (text.includes('Notebooks') || text.includes('New notebook') || text.includes('Recents') || text.includes('Azure DevOps')) return true;
+        return false;
     }
 
     function extractGeminiTextDirectly() {
@@ -44,50 +62,19 @@
             const md = last.querySelector('.markdown, [class*="markdown"], .response-content, p');
             if (md) {
                 const text = cleanExtractedText(md.innerText);
-                if (text.length > 10) return text;
+                if (text.length > 10 && !isSidebarGarbage(text)) return text;
             }
             const text = cleanExtractedText(last.innerText);
-            if (text.length > 15) return text;
+            if (text.length > 15 && !isSidebarGarbage(text)) return text;
         }
         return '';
-    }
-
-    function findGeminiSendButton() {
-        const selectors = [
-            'button[aria-label="Send message"]',
-            'button[aria-label="Send"]',
-            'button[aria-label*="Send"]',
-            'button[aria-label*="send"]',
-            'button.send-button',
-            '.send-button-container button',
-            'rich-textarea ~ * button',
-            'button:has(mat-icon[fonticon="send"])',
-        ];
-        for (const sel of selectors) {
-            const btn = document.querySelector(sel);
-            if (btn) return btn;
-        }
-
-        const rich = document.querySelector('rich-textarea');
-        if (rich) {
-            const container = rich.closest('.input-area') || rich.parentElement;
-            if (container) {
-                const buttons = container.querySelectorAll('button');
-                for (const b of buttons) {
-                    const aria = (b.getAttribute('aria-label') || '').toLowerCase();
-                    if (aria.includes('send')) return b;
-                }
-                if (buttons.length > 0) return buttons[buttons.length - 1];
-            }
-        }
-        return null;
     }
 
     window.AIBridgeUtils.setupMessageListener(async (promptText) => {
         const utils = window.AIBridgeUtils;
         console.log('[Gemini] Starting prompt injection...');
 
-        const mainEl = document.querySelector('main') || document.body;
+        const mainEl = document.querySelector('.conversation-container, main') || document.body;
         const textBefore = mainEl.innerText;
 
         // 1. Find and fill input
@@ -98,7 +85,7 @@
         // 2. Wait for Angular change detection, then send
         await new Promise(r => setTimeout(r, 800));
 
-        let sendBtn = findGeminiSendButton();
+        let sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
         if (sendBtn) {
             utils.clickButton(sendBtn);
             console.log('[Gemini] Sent via send button');
@@ -138,17 +125,19 @@
                 let text = extractGeminiTextDirectly();
 
                 if (!text || text.length < 10) {
-                    const mainEl = document.querySelector('main') || document.body;
-                    const afterLines = mainEl.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                    const newLines = afterLines.filter(line => {
-                        if (beforeLines.has(line)) return false;
-                        if (promptLines.has(line)) return false;
-                        return true;
-                    });
-                    text = cleanExtractedText(newLines.join('\n'));
+                    const mainEl = document.querySelector('.conversation-container, main');
+                    if (mainEl) {
+                        const afterLines = mainEl.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                        const newLines = afterLines.filter(line => {
+                            if (beforeLines.has(line)) return false;
+                            if (promptLines.has(line)) return false;
+                            return true;
+                        });
+                        text = cleanExtractedText(newLines.join('\n'));
+                    }
                 }
 
-                if (text.length > 15 && !text.includes('You said\nGemini said')) {
+                if (text.length > 15 && !isSidebarGarbage(text)) {
                     if (text === lastFoundText) {
                         stableCount++;
                         if (stableCount >= 2) {

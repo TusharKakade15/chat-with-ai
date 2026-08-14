@@ -8,6 +8,15 @@
         'div[contenteditable="true"]',
     ];
 
+    const SEND_BUTTON_SELECTORS = [
+        'button[aria-label="Send Message"]',
+        'button[aria-label="Send message"]',
+        'button[aria-label="Send"]',
+        'button[aria-label*="Send"]',
+        'button[aria-label*="send"]',
+        'fieldset button:last-of-type',
+    ];
+
     function cleanExtractedText(rawText) {
         if (!rawText) return '';
         const lines = rawText.split('\n');
@@ -52,38 +61,6 @@
         return '';
     }
 
-    function findClaudeSendButton() {
-        // Direct aria selectors
-        const selectors = [
-            'button[aria-label="Send Message"]',
-            'button[aria-label="Send message"]',
-            'button[aria-label="Send"]',
-            'fieldset button:last-of-type',
-            'button[aria-label*="Send"]',
-            'button[aria-label*="send"]',
-        ];
-        for (const sel of selectors) {
-            const btn = document.querySelector(sel);
-            if (btn) return btn;
-        }
-
-        // Search near ProseMirror
-        const editor = document.querySelector('.ProseMirror');
-        if (editor) {
-            const container = editor.closest('fieldset') || editor.closest('form') || editor.parentElement?.parentElement;
-            if (container) {
-                const buttons = container.querySelectorAll('button');
-                for (const b of buttons) {
-                    const aria = (b.getAttribute('aria-label') || '').toLowerCase();
-                    if (aria.includes('send')) return b;
-                }
-                if (buttons.length > 0) return buttons[buttons.length - 1];
-            }
-        }
-
-        return null;
-    }
-
     window.AIBridgeUtils.setupMessageListener(async (promptText) => {
         const utils = window.AIBridgeUtils;
         console.log('[Claude] Starting prompt injection...');
@@ -98,7 +75,7 @@
 
         // 2. Wait then send
         await new Promise(r => setTimeout(r, 800));
-        const sendBtn = findClaudeSendButton();
+        const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
         if (sendBtn) {
             console.log('[Claude] Sending via send button...');
             utils.clickButton(sendBtn);

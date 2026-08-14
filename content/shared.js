@@ -38,31 +38,35 @@ window.AIBridgeUtils = {
         element.focus();
 
         if (element.contentEditable === 'true' || element.getAttribute('contenteditable') === 'true') {
-            // Step 1: Format paragraph structure directly
-            element.innerHTML = '';
-            const lines = text.split('\n');
-            lines.forEach(line => {
-                const p = document.createElement('p');
-                if (line.trim() === '') {
-                    p.innerHTML = '<br>';
-                } else {
-                    p.textContent = line;
-                }
-                element.appendChild(p);
-            });
-
-            // Step 2: Try ClipboardEvent paste (for ProseMirror/Quill event handlers)
+            let inserted = false;
             try {
-                const clipboardData = new DataTransfer();
-                clipboardData.setData('text/plain', text);
-                element.dispatchEvent(new ClipboardEvent('paste', {
-                    bubbles: true,
-                    cancelable: true,
-                    clipboardData: clipboardData
-                }));
-            } catch (e) {}
+                const selection = window.getSelection();
+                if (selection) {
+                    const range = document.createRange();
+                    range.selectNodeContents(element);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    inserted = document.execCommand('insertText', false, text);
+                }
+            } catch (e) {
+                inserted = false;
+            }
 
-            // Step 3: Dispatch full event lifecycle
+            if (!inserted || element.textContent.trim().length === 0) {
+                element.innerHTML = '';
+                const lines = text.split('\n');
+                lines.forEach(line => {
+                    const p = document.createElement('p');
+                    if (line.trim() === '') {
+                        p.innerHTML = '<br>';
+                    } else {
+                        p.textContent = line;
+                    }
+                    element.appendChild(p);
+                });
+            }
+
+            element.dispatchEvent(new Event('focus', { bubbles: true }));
             element.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: text }));
             element.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: text }));
             element.dispatchEvent(new Event('input', { bubbles: true }));
@@ -79,6 +83,24 @@ window.AIBridgeUtils = {
             element.dispatchEvent(new Event('input', { bubbles: true }));
             element.dispatchEvent(new Event('change', { bubbles: true }));
         }
+    },
+
+    // Find a send button using multiple selectors
+    findSendButton: function(selectors) {
+        if (!selectors) return null;
+        const selectorList = Array.isArray(selectors) ? selectors : [selectors];
+        for (const sel of selectorList) {
+            const btn = document.querySelector(sel);
+            if (btn) {
+                console.log('[AIBridge] Send button found via:', sel);
+                let target = btn;
+                while (target && target.tagName !== 'BUTTON') {
+                    target = target.parentElement;
+                }
+                return target || btn;
+            }
+        }
+        return null;
     },
 
     // Click a button safely
