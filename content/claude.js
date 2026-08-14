@@ -8,11 +8,13 @@
         'div[contenteditable="true"]',
     ];
 
+    // Explicit send button selectors only (NO generic button:has(svg) which triggered Settings modal)
     const SEND_BUTTON_SELECTORS = [
         'button[aria-label="Send Message"]',
         'button[aria-label="Send message"]',
         'button[aria-label="Send"]',
-        'button:has(svg)',
+        'fieldset button:last-of-type',
+        'button[aria-label*="Send"]',
     ];
 
     function cleanExtractedText(rawText) {
@@ -38,7 +40,7 @@
         if (messageEls.length > 0) {
             const last = messageEls[messageEls.length - 1];
             const text = cleanExtractedText(last.innerText);
-            if (text.length > 0) return text;
+            if (text.length > 5) return text;
         }
         return '';
     }
@@ -55,14 +57,14 @@
         console.log('[Claude] Input found:', input.tagName, input.className);
         utils.simulateInput(input, promptText);
 
-        // 2. Wait then send
+        // 2. Wait then send (try send button first, fallback to Enter)
         await new Promise(r => setTimeout(r, 800));
         const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
         if (sendBtn) {
             console.log('[Claude] Sending via send button...');
             utils.clickButton(sendBtn);
         } else {
-            console.log('[Claude] Pressing Enter to send...');
+            console.log('[Claude] Send button not found, pressing Enter to send...');
             input.focus();
             input.dispatchEvent(new KeyboardEvent('keydown', {
                 key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
@@ -75,7 +77,7 @@
             }));
         }
 
-        // 3. Fast polling for response (max 35s, 1s interval)
+        // 3. Fast polling for response
         console.log('[Claude] Polling for response...');
         const responseText = await pollForClaudeResponse(textBefore, promptText, 35000);
 

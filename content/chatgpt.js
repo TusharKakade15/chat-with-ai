@@ -13,7 +13,7 @@
         'button[data-testid="send-button"]',
         'button[aria-label="Send prompt"]',
         'button[aria-label="Send"]',
-        'button:has(svg)',
+        'form button[type="submit"]',
     ];
 
     function cleanExtractedText(rawText) {
@@ -28,27 +28,38 @@
             if (trimmed === 'ChatGPT can make mistakes. Check important info.') return false;
             if (trimmed === 'Ask anything') return false;
             if (trimmed === 'Think') return false;
+            if (trimmed === 'Show more' || trimmed === 'Read more' || trimmed === 'View more' || trimmed === 'More') return false;
             if (trimmed === 'Copy' || trimmed === 'Read aloud' || trimmed === 'Bad response' || trimmed === 'Good response') return false;
             return true;
         });
-        return cleanedLines.join('\n').trim();
+        const result = cleanedLines.join('\n').trim();
+        if (result === 'Show more' || result === 'Read more' || result === 'More' || result.length < 5) return '';
+        return result;
     }
 
     function extractAssistantTextDirectly() {
-        const assistantEls = document.querySelectorAll('[data-message-author-role="assistant"], article[data-testid*="conversation-turn"], article');
+        const assistantEls = document.querySelectorAll('[data-message-author-role="assistant"]');
         if (assistantEls.length > 0) {
             const lastAssistant = assistantEls[assistantEls.length - 1];
-            
             const md = lastAssistant.querySelector('.markdown, .prose, [class*="markdown"], [class*="prose"], div.text-message');
             if (md) {
                 const text = cleanExtractedText(md.innerText);
-                if (text.length > 0) return text;
+                if (text.length > 5) return text;
             }
-
             const clone = lastAssistant.cloneNode(true);
             clone.querySelectorAll('button, nav, svg, [role="button"], [aria-label]').forEach(el => el.remove());
             const text = cleanExtractedText(clone.innerText);
-            if (text.length > 0) return text;
+            if (text.length > 10) return text;
+        }
+
+        const articles = document.querySelectorAll('article');
+        if (articles.length > 1) {
+            const lastArticle = articles[articles.length - 1];
+            const md = lastArticle.querySelector('.markdown, .prose, [class*="markdown"]');
+            if (md) {
+                const text = cleanExtractedText(md.innerText);
+                if (text.length > 5 && !text.includes('[SYSTEM INSTRUCTION')) return text;
+            }
         }
         return '';
     }
@@ -60,7 +71,7 @@
         const mainEl = document.querySelector('main') || document.body;
         const textBefore = mainEl.innerText;
 
-        // 1. Find and fill input using background-safe paste
+        // 1. Find and fill input
         const input = await utils.waitForElement(INPUT_SELECTORS);
         console.log('[ChatGPT] Input found:', input.tagName, input.id);
         utils.simulateInput(input, promptText);
@@ -85,7 +96,7 @@
             }));
         }
 
-        // 3. Fast polling for response (max 35s, 1s interval)
+        // 3. Fast polling for response
         console.log('[ChatGPT] Polling for assistant response...');
         const responseText = await pollForAssistantResponse(textBefore, promptText, 35000);
 
@@ -117,10 +128,9 @@
                     text = cleanExtractedText(newLines.join('\n'));
                 }
 
-                if (text.length > 10) {
+                if (text.length > 10 && text !== 'Show more' && text !== 'Read more') {
                     if (text === lastFoundText) {
                         stableCount++;
-                        // 2 consecutive stable checks = generation complete
                         if (stableCount >= 2) {
                             console.log('[ChatGPT] Response stable after', stableCount, 'checks');
                             resolve(text);
