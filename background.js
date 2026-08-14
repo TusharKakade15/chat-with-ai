@@ -34,11 +34,11 @@ async function getAiTabReady(aiKey) {
   let tabId;
   if (targetTab) {
     tabId = targetTab.id;
-    console.log(`[${aiKey}] Found existing tab ${tabId}, navigating to new chat...`);
+    console.log(`[${aiKey}] Found existing tab ${tabId}, navigating to new chat in background...`);
     await chrome.tabs.update(tabId, { url: config.newChatUrl });
     await waitForTabLoad(tabId);
   } else {
-    console.log(`[${aiKey}] No tab found, opening new one...`);
+    console.log(`[${aiKey}] No tab found, opening new one in background...`);
     const newTab = await chrome.tabs.create({ url: config.newChatUrl, active: false });
     tabId = newTab.id;
     await waitForTabLoad(tabId);
@@ -72,12 +72,6 @@ async function ensureContentScriptReady(tabId, label) {
   throw new Error(`Could not connect to ${label}. Make sure you are logged in.`);
 }
 
-// FOCUS a tab so Chrome doesn't throttle it, then wait a moment
-async function focusTab(tabId) {
-  await chrome.tabs.update(tabId, { active: true });
-  await new Promise(r => setTimeout(r, 1000));
-}
-
 chrome.action.onClicked.addListener(async (tab) => {
   if (chatTabId) {
     try { await chrome.tabs.update(chatTabId, { active: true }); return; }
@@ -108,46 +102,40 @@ function sendPromptToTab(tabId, prompt) {
 
 async function handleBroadcast(initialPrompt) {
   try {
-    // Setup all tabs (navigate to new chats)
-    sendUiUpdate({ status: 'Preparing AI tabs...' });
+    // Setup all tabs (navigate to new chats silently in background)
+    sendUiUpdate({ status: 'Preparing AI tabs in background...' });
     const gptTabId = await getAiTabReady('chatgpt');
     const claudeTabId = await getAiTabReady('claude');
     const geminiTabId = await getAiTabReady('gemini');
     console.log('All tabs ready:', { gptTabId, claudeTabId, geminiTabId });
 
-    // Turn 1: ChatGPT — FOCUS the tab first to prevent throttling
+    // Turn 1: ChatGPT (stays in background, user stays on extension tab)
     sendUiUpdate({ status: 'Sending to ChatGPT...', currentAgent: 'ChatGPT' });
-    await focusTab(gptTabId);
     const gptPrompt = `${SYSTEM_INSTRUCTION}\n\nUser Prompt: ${initialPrompt}`;
     const gptResponse = await sendPromptToTab(gptTabId, gptPrompt);
     console.log('[ChatGPT] Response:', gptResponse);
     sendUiUpdate({ status: 'ChatGPT finished.', currentAgent: 'ChatGPT', text: gptResponse.text });
 
-    // Turn 2: Claude — FOCUS the tab
+    // Turn 2: Claude (stays in background)
     sendUiUpdate({ status: 'Sending to Claude...', currentAgent: 'Claude' });
-    await focusTab(claudeTabId);
     const claudePrompt = `${SYSTEM_INSTRUCTION}\n\nThe user asked: "${initialPrompt}"\nChatGPT responded: "${gptResponse.text}"\nWhat is your perspective on this?`;
     const claudeResponse = await sendPromptToTab(claudeTabId, claudePrompt);
     console.log('[Claude] Response:', claudeResponse);
     sendUiUpdate({ status: 'Claude finished.', currentAgent: 'Claude', text: claudeResponse.text });
 
-    // Turn 3: Gemini — FOCUS the tab
+    // Turn 3: Gemini (stays in background)
     sendUiUpdate({ status: 'Sending to Gemini...', currentAgent: 'Gemini' });
-    await focusTab(geminiTabId);
     const geminiPrompt = `${SYSTEM_INSTRUCTION}\n\nUser asked: "${initialPrompt}"\nChatGPT said: "${gptResponse.text}"\nClaude said: "${claudeResponse.text}"\nProvide a final synthesis or concluding thoughts.`;
     const geminiResponse = await sendPromptToTab(geminiTabId, geminiPrompt);
     console.log('[Gemini] Response:', geminiResponse);
     sendUiUpdate({ status: 'Round complete.', currentAgent: 'Gemini', text: geminiResponse.text });
 
-    // Switch back to the extension tab
-    if (chatTabId) await chrome.tabs.update(chatTabId, { active: true });
     sendUiUpdate({ status: 'Idle', currentAgent: null });
 
   } catch (error) {
     console.error('Broadcast Error:', error);
     let errorMsg = (error && error.message) ? error.message : String(error);
     sendUiUpdate({ status: `Error: ${errorMsg}`, currentAgent: null });
-    if (chatTabId) await chrome.tabs.update(chatTabId, { active: true }).catch(() => {});
   }
 }
 
