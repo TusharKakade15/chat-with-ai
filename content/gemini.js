@@ -1,5 +1,4 @@
 // Gemini Content Script
-// Uses TEXT-DIFF approach same as ChatGPT — captures text before, finds new text after
 
 (function() {
     const INPUT_SELECTORS = [
@@ -16,99 +15,119 @@
         'button.send-button',
     ];
 
+    function cleanExtractedText(rawText) {
+        if (!rawText) return '';
+        const lines = rawText.split('\n');
+        const cleanedLines = lines.filter(line => {
+            const trimmed = line.trim();
+            if (!trimmed) return false;
+            if (/^<?\s*\d+\s*\/\s*\d+\s*>?$/.test(trimmed)) return false;
+            if (trimmed.includes('[SYSTEM INSTRUCTION')) return false;
+            if (trimmed.includes('User asked:')) return false;
+            if (trimmed.includes('ChatGPT said:')) return false;
+            if (trimmed.includes('Claude said:')) return false;
+            if (trimmed.includes('Provide a final synthesis')) return false;
+            if (trimmed === 'Gemini is AI and can make mistakes.') return false;
+            if (trimmed === 'Gemini can make mistakes.') return false;
+            if (trimmed === 'Ask Gemini') return false;
+            if (trimmed === 'New chat' || trimmed === 'Search chats') return false;
+            return true;
+        });
+        return cleanedLines.join('\n').trim();
+    }
+
+    function extractGeminiTextDirectly() {
+        const responseEls = document.querySelectorAll('model-response, message-content:not(user-query message-content), .model-response-text');
+        if (responseEls.length > 0) {
+            const last = responseEls[responseEls.length - 1];
+            const text = cleanExtractedText(last.innerText);
+            if (text.length > 0) return text;
+        }
+        return '';
+    }
+
     window.AIBridgeUtils.setupMessageListener(async (promptText) => {
         const utils = window.AIBridgeUtils;
-        console.log('[Gemini] Starting...');
+        console.log('[Gemini] Starting prompt injection...');
 
-        // 1. Capture ALL text on the page BEFORE sending
-        const textBefore = document.body.innerText;
-        console.log('[Gemini] Page text before (length):', textBefore.length);
+        const mainEl = document.querySelector('main') || document.body;
+        const textBefore = mainEl.innerText;
 
-        // 2. Find and fill input
+        // 1. Find and fill input
         const input = await utils.waitForElement(INPUT_SELECTORS);
         console.log('[Gemini] Input found:', input.tagName, input.className);
         utils.simulateInput(input, promptText);
 
-        // 3. Wait then send
-        await new Promise(r => setTimeout(r, 1000));
+        // 2. Wait then send once
+        await new Promise(r => setTimeout(r, 800));
         let sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
         if (sendBtn) {
             utils.clickButton(sendBtn);
-            console.log('[Gemini] Sent via button');
+            console.log('[Gemini] Sent via send button (single click)');
         } else {
-            console.log('[Gemini] Trying Enter key...');
+            console.log('[Gemini] Send button not found, sending via Enter key...');
             input.focus();
             input.dispatchEvent(new KeyboardEvent('keydown', { 
-                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true 
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true 
             }));
         }
 
-        // 4. Poll for NEW text that wasn't on the page before
-        console.log('[Gemini] Polling for new text...');
-        const responseText = await pollForNewText(textBefore, promptText, 90000);
+        // 3. Poll for response
+        console.log('[Gemini] Polling for model response...');
+        const responseText = await pollForGeminiResponse(textBefore, promptText, 90000);
 
         console.log('[Gemini] Final response length:', responseText.length);
         console.log('[Gemini] Response:', responseText);
         return responseText || 'Error: Could not find Gemini response';
     });
 
-    function pollForNewText(textBefore, promptText, timeout) {
+    function pollForGeminiResponse(textBefore, promptText, timeout) {
         return new Promise((resolve) => {
             const start = Date.now();
             const beforeLines = new Set(textBefore.split('\n').map(l => l.trim()).filter(l => l.length > 0));
             const promptLines = new Set(promptText.split('\n').map(l => l.trim()).filter(l => l.length > 0));
             
-            let lastNewText = '';
+            let lastFoundText = '';
             let stableCount = 0;
 
             const check = () => {
-                const textAfter = document.body.innerText;
-                const afterLines = textAfter.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                let text = extractGeminiTextDirectly();
 
-                const newLines = afterLines.filter(line => {
-                    if (beforeLines.has(line)) return false;
-                    if (promptLines.has(line)) return false;
-                    // Skip Gemini UI chrome
-                    if (line === 'Gemini is AI and can make mistakes.') return false;
-                    if (line === 'Gemini can make mistakes.') return false;
-                    if (line === 'Ask Gemini') return false;
-                    if (line.length < 3) return false;
-                    // Skip system instruction fragments
-                    if (line.includes('[SYSTEM INSTRUCTION')) return false;
-                    if (line.includes('User asked:')) return false;
-                    if (line.includes('ChatGPT said:')) return false;
-                    if (line.includes('Claude said:')) return false;
-                    if (line.includes('Provide a final synthesis')) return false;
-                    return true;
-                });
+                if (!text || text.length < 5) {
+                    const mainEl = document.querySelector('main') || document.body;
+                    const afterLines = mainEl.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                    const newLines = afterLines.filter(line => {
+                        if (beforeLines.has(line)) return false;
+                        if (promptLines.has(line)) return false;
+                        return true;
+                    });
+                    text = cleanExtractedText(newLines.join('\n'));
+                }
 
-                const newText = newLines.join('\n').trim();
-                console.log('[Gemini] Poll: found', newLines.length, 'new lines, length:', newText.length);
-
-                if (newText.length > 10) {
-                    if (newText === lastNewText) {
+                if (text.length > 10) {
+                    if (text === lastFoundText) {
                         stableCount++;
                         if (stableCount >= 3) {
-                            console.log('[Gemini] Response stable for', stableCount, 'polls');
-                            resolve(newText);
+                            console.log('[Gemini] Response stable after', stableCount, 'polls');
+                            resolve(text);
                             return;
                         }
                     } else {
                         stableCount = 0;
-                        lastNewText = newText;
+                        lastFoundText = text;
                     }
                 }
 
                 if (Date.now() - start > timeout) {
-                    console.log('[Gemini] Timeout reached');
-                    resolve(lastNewText || newText || '');
+                    console.log('[Gemini] Polling timeout reached');
+                    resolve(lastFoundText || text || '');
                     return;
                 }
 
                 setTimeout(check, 2000);
             };
 
-            setTimeout(check, 5000);
+            setTimeout(check, 4000);
         });
     }
 })();

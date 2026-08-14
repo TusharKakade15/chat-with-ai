@@ -1,5 +1,4 @@
 // Claude Content Script
-// Uses TEXT-DIFF approach — captures text before, finds new text after
 
 (function() {
     const INPUT_SELECTORS = [
@@ -9,23 +8,56 @@
         'div[contenteditable="true"]',
     ];
 
+    const SEND_BUTTON_SELECTORS = [
+        'button[aria-label="Send Message"]',
+        'button[aria-label="Send message"]',
+        'button[aria-label="Send"]',
+    ];
+
+    function cleanExtractedText(rawText) {
+        if (!rawText) return '';
+        const lines = rawText.split('\n');
+        const cleanedLines = lines.filter(line => {
+            const trimmed = line.trim();
+            if (!trimmed) return false;
+            if (/^<?\s*\d+\s*\/\s*\d+\s*>?$/.test(trimmed)) return false;
+            if (trimmed.includes('[SYSTEM INSTRUCTION')) return false;
+            if (trimmed.includes('The user asked:')) return false;
+            if (trimmed.includes('ChatGPT responded:')) return false;
+            if (trimmed.includes('What is your perspective')) return false;
+            if (trimmed === 'Claude is AI and can make mistakes. Please double-check responses.') return false;
+            if (trimmed === 'Copy' || trimmed === 'Retry' || trimmed === 'Edit') return false;
+            return true;
+        });
+        return cleanedLines.join('\n').trim();
+    }
+
+    function extractClaudeTextDirectly() {
+        // Look for Claude message containers
+        const messageEls = document.querySelectorAll('.font-claude-message, [data-is-streaming], .grid-cols-1 .prose');
+        if (messageEls.length > 0) {
+            const last = messageEls[messageEls.length - 1];
+            const text = cleanExtractedText(last.innerText);
+            if (text.length > 0) return text;
+        }
+        return '';
+    }
+
     window.AIBridgeUtils.setupMessageListener(async (promptText) => {
         const utils = window.AIBridgeUtils;
-        console.log('[Claude] Starting...');
+        console.log('[Claude] Starting prompt injection...');
 
-        // 1. Capture ALL text on the page BEFORE sending
-        const textBefore = document.body.innerText;
-        console.log('[Claude] Page text before (length):', textBefore.length);
+        const mainEl = document.querySelector('main') || document.body;
+        const textBefore = mainEl.innerText;
 
-        // 2. Find the input field
+        // 1. Find the input field
         const input = await utils.waitForElement(INPUT_SELECTORS);
         console.log('[Claude] Input found:', input.tagName, input.className);
 
-        // 3. Type text into Claude's ProseMirror editor
+        // 2. Type text into Claude's ProseMirror editor
         input.focus();
         await new Promise(r => setTimeout(r, 300));
 
-        // Select all and paste
         const selection = window.getSelection();
         const range = document.createRange();
         range.selectNodeContents(input);
@@ -45,7 +77,6 @@
 
         await new Promise(r => setTimeout(r, 500));
 
-        // Fallback if paste didn't work
         if ((input.textContent || '').trim().length < 10) {
             console.log('[Claude] Trying paragraph insertion...');
             input.innerHTML = '';
@@ -55,91 +86,76 @@
             input.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
-        // 4. Wait then send via Enter key
-        await new Promise(r => setTimeout(r, 1000));
-        console.log('[Claude] Pressing Enter to send...');
-        input.focus();
-        input.dispatchEvent(new KeyboardEvent('keydown', {
-            key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
-        }));
-        input.dispatchEvent(new KeyboardEvent('keypress', {
-            key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
-        }));
-        input.dispatchEvent(new KeyboardEvent('keyup', {
-            key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
-        }));
-
-        // Also try clicking send button as backup
-        await new Promise(r => setTimeout(r, 500));
-        const sendBtn = utils.findSendButton([
-            'button[aria-label="Send Message"]',
-            'button[aria-label="Send message"]',
-            'button[aria-label="Send"]',
-        ]);
+        // 3. Send once (prefer send button, fallback to Enter)
+        await new Promise(r => setTimeout(r, 800));
+        const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
         if (sendBtn) {
-            console.log('[Claude] Also clicking send button...');
+            console.log('[Claude] Sending via send button (single click)...');
             utils.clickButton(sendBtn);
+        } else {
+            console.log('[Claude] Pressing Enter to send...');
+            input.focus();
+            input.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
+            }));
         }
 
-        // 5. Poll for NEW text using text-diff
-        console.log('[Claude] Polling for new text...');
-        const responseText = await pollForNewText(textBefore, promptText, 90000);
+        // 4. Poll for response
+        console.log('[Claude] Polling for response...');
+        const responseText = await pollForClaudeResponse(textBefore, promptText, 90000);
 
         console.log('[Claude] Final response length:', responseText.length);
         console.log('[Claude] Response:', responseText);
         return responseText || 'Error: Could not find Claude response';
     });
 
-    function pollForNewText(textBefore, promptText, timeout) {
+    function pollForClaudeResponse(textBefore, promptText, timeout) {
         return new Promise((resolve) => {
             const start = Date.now();
             const beforeLines = new Set(textBefore.split('\n').map(l => l.trim()).filter(l => l.length > 0));
             const promptLines = new Set(promptText.split('\n').map(l => l.trim()).filter(l => l.length > 0));
             
-            let lastNewText = '';
+            let lastFoundText = '';
             let stableCount = 0;
 
             const check = () => {
-                const textAfter = document.body.innerText;
-                const afterLines = textAfter.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                let text = extractClaudeTextDirectly();
 
-                const newLines = afterLines.filter(line => {
-                    if (beforeLines.has(line)) return false;
-                    if (promptLines.has(line)) return false;
-                    if (line.length < 3) return false;
-                    if (line.includes('[SYSTEM INSTRUCTION')) return false;
-                    if (line.includes('The user asked:')) return false;
-                    if (line.includes('ChatGPT responded:')) return false;
-                    if (line.includes('What is your perspective')) return false;
-                    if (line === 'Claude is AI and can make mistakes. Please double-check responses.') return false;
-                    return true;
-                });
+                if (!text || text.length < 5) {
+                    const mainEl = document.querySelector('main') || document.body;
+                    const afterLines = mainEl.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                    const newLines = afterLines.filter(line => {
+                        if (beforeLines.has(line)) return false;
+                        if (promptLines.has(line)) return false;
+                        return true;
+                    });
+                    text = cleanExtractedText(newLines.join('\n'));
+                }
 
-                const newText = newLines.join('\n').trim();
-                console.log('[Claude] Poll: found', newLines.length, 'new lines, length:', newText.length);
-
-                if (newText.length > 10) {
-                    if (newText === lastNewText) {
+                if (text.length > 10) {
+                    if (text === lastFoundText) {
                         stableCount++;
                         if (stableCount >= 3) {
-                            resolve(newText);
+                            console.log('[Claude] Response stable after', stableCount, 'polls');
+                            resolve(text);
                             return;
                         }
                     } else {
                         stableCount = 0;
-                        lastNewText = newText;
+                        lastFoundText = text;
                     }
                 }
 
                 if (Date.now() - start > timeout) {
-                    resolve(lastNewText || newText || '');
+                    console.log('[Claude] Polling timeout reached');
+                    resolve(lastFoundText || text || '');
                     return;
                 }
 
                 setTimeout(check, 2000);
             };
 
-            setTimeout(check, 5000);
+            setTimeout(check, 4000);
         });
     }
 })();
