@@ -5,6 +5,7 @@
         '#prompt-textarea',
         'div[id="prompt-textarea"]',
         '.ProseMirror[contenteditable="true"]',
+        'div[contenteditable="true"]',
         'form textarea',
     ];
 
@@ -12,6 +13,7 @@
         'button[data-testid="send-button"]',
         'button[aria-label="Send prompt"]',
         'button[aria-label="Send"]',
+        'button:has(svg)',
     ];
 
     function cleanExtractedText(rawText) {
@@ -20,12 +22,9 @@
         const cleanedLines = lines.filter(line => {
             const trimmed = line.trim();
             if (!trimmed) return false;
-            // Filter pagination / attempt indicators like "2/2", "< 2/2 >", "1/2"
             if (/^<?\s*\d+\s*\/\s*\d+\s*>?$/.test(trimmed)) return false;
-            // Filter system instructions & prompt headers
             if (trimmed.includes('[SYSTEM INSTRUCTION')) return false;
             if (trimmed.includes('User Prompt:')) return false;
-            // Filter UI chrome & buttons
             if (trimmed === 'ChatGPT can make mistakes. Check important info.') return false;
             if (trimmed === 'Ask anything') return false;
             if (trimmed === 'Think') return false;
@@ -36,18 +35,16 @@
     }
 
     function extractAssistantTextDirectly() {
-        const assistantEls = document.querySelectorAll('[data-message-author-role="assistant"], article[data-testid*="conversation-turn"]');
+        const assistantEls = document.querySelectorAll('[data-message-author-role="assistant"], article[data-testid*="conversation-turn"], article');
         if (assistantEls.length > 0) {
             const lastAssistant = assistantEls[assistantEls.length - 1];
             
-            // Prefer markdown container inside assistant message
-            const md = lastAssistant.querySelector('.markdown, .prose, [class*="markdown"], [class*="prose"]');
+            const md = lastAssistant.querySelector('.markdown, .prose, [class*="markdown"], [class*="prose"], div.text-message');
             if (md) {
                 const text = cleanExtractedText(md.innerText);
                 if (text.length > 0) return text;
             }
 
-            // Fallback: clone assistant element and remove buttons/navigation
             const clone = lastAssistant.cloneNode(true);
             clone.querySelectorAll('button, nav, svg, [role="button"], [aria-label]').forEach(el => el.remove());
             const text = cleanExtractedText(clone.innerText);
@@ -60,32 +57,37 @@
         const utils = window.AIBridgeUtils;
         console.log('[ChatGPT] Starting prompt injection...');
 
-        // Snapshot main content before prompt
         const mainEl = document.querySelector('main') || document.body;
         const textBefore = mainEl.innerText;
 
-        // 1. Find and fill input
+        // 1. Find and fill input using background-safe paste
         const input = await utils.waitForElement(INPUT_SELECTORS);
         console.log('[ChatGPT] Input found:', input.tagName, input.id);
         utils.simulateInput(input, promptText);
 
-        // 2. Wait for UI state to update, then click send ONCE
+        // 2. Wait for UI state, then send
         await new Promise(r => setTimeout(r, 800));
         const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
         if (sendBtn) {
             utils.clickButton(sendBtn);
-            console.log('[ChatGPT] Sent via send button (single click)');
+            console.log('[ChatGPT] Sent via send button');
         } else {
             console.log('[ChatGPT] Send button not found, sending via Enter key');
             input.focus();
             input.dispatchEvent(new KeyboardEvent('keydown', { 
                 key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true 
             }));
+            input.dispatchEvent(new KeyboardEvent('keypress', { 
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true 
+            }));
+            input.dispatchEvent(new KeyboardEvent('keyup', { 
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true 
+            }));
         }
 
-        // 3. Poll for response
+        // 3. Fast polling for response (max 35s, 1s interval)
         console.log('[ChatGPT] Polling for assistant response...');
-        const responseText = await pollForAssistantResponse(textBefore, promptText, 90000);
+        const responseText = await pollForAssistantResponse(textBefore, promptText, 35000);
 
         console.log('[ChatGPT] Final scraped text length:', responseText.length);
         console.log('[ChatGPT] Scraped text:', responseText);
@@ -102,10 +104,8 @@
             let stableCount = 0;
 
             const check = () => {
-                // Method A: Direct extraction from assistant container (accurate & avoids sidebar/headers)
                 let text = extractAssistantTextDirectly();
 
-                // Method B: Diff on <main> area (excludes sidebar titles)
                 if (!text || text.length < 5) {
                     const mainEl = document.querySelector('main') || document.body;
                     const afterLines = mainEl.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -120,8 +120,9 @@
                 if (text.length > 10) {
                     if (text === lastFoundText) {
                         stableCount++;
-                        if (stableCount >= 3) {
-                            console.log('[ChatGPT] Response stable after', stableCount, 'polls');
+                        // 2 consecutive stable checks = generation complete
+                        if (stableCount >= 2) {
+                            console.log('[ChatGPT] Response stable after', stableCount, 'checks');
                             resolve(text);
                             return;
                         }
@@ -137,10 +138,10 @@
                     return;
                 }
 
-                setTimeout(check, 2000);
+                setTimeout(check, 1000);
             };
 
-            setTimeout(check, 4000);
+            setTimeout(check, 2500);
         });
     }
 })();

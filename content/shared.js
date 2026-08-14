@@ -33,12 +33,12 @@ window.AIBridgeUtils = {
         });
     },
 
-    // Safe input simulation that works in both active and background tabs
+    // Universal input simulation using ClipboardEvent paste (proven to work in background tabs)
     simulateInput: function(element, text) {
         element.focus();
 
         if (element.contentEditable === 'true' || element.getAttribute('contenteditable') === 'true') {
-            let inserted = false;
+            // Select existing contents
             try {
                 const selection = window.getSelection();
                 if (selection) {
@@ -46,14 +46,26 @@ window.AIBridgeUtils = {
                     range.selectNodeContents(element);
                     selection.removeAllRanges();
                     selection.addRange(range);
-                    inserted = document.execCommand('insertText', false, text);
                 }
+            } catch (e) {}
+
+            // Primary method: ClipboardEvent paste
+            let pasted = false;
+            try {
+                const clipboardData = new DataTransfer();
+                clipboardData.setData('text/plain', text);
+                pasted = element.dispatchEvent(new ClipboardEvent('paste', {
+                    bubbles: true,
+                    cancelable: true,
+                    clipboardData: clipboardData
+                }));
+                console.log('[AIBridge] Dispatched ClipboardEvent paste');
             } catch (e) {
-                inserted = false;
+                pasted = false;
             }
 
-            // If execCommand failed (standard behavior in background tabs), build structured paragraphs
-            if (!inserted || element.textContent.trim().length === 0) {
+            // Fallback: build proper paragraph structure if text is still empty
+            if (!pasted || element.textContent.trim().length === 0) {
                 element.innerHTML = '';
                 const lines = text.split('\n');
                 lines.forEach(line => {
@@ -65,9 +77,10 @@ window.AIBridgeUtils = {
                     }
                     element.appendChild(p);
                 });
+                console.log('[AIBridge] Injected structured paragraph nodes');
             }
 
-            // Dispatch full input events so frameworks (Angular, React, Vue, ProseMirror, Quill) detect the change
+            // Dispatch full suite of input events for React/ProseMirror/Quill/Angular
             element.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertFromPaste', data: text }));
             element.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertFromPaste', data: text }));
             element.dispatchEvent(new Event('input', { bubbles: true }));

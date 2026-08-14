@@ -17,6 +17,8 @@
         'button.send-button',
         '.send-button-container button',
         'rich-textarea ~ * button',
+        'button:has(mat-icon[fonticon="send"])',
+        'button:has(svg)',
     ];
 
     function cleanExtractedText(rawText) {
@@ -42,10 +44,9 @@
     }
 
     function extractGeminiTextDirectly() {
-        const responseEls = document.querySelectorAll('model-response, message-content:not(user-query message-content), .model-response-text, .response-container');
+        const responseEls = document.querySelectorAll('model-response, message-content:not(user-query message-content), .model-response-text, .response-container, [class*="model-response"]');
         if (responseEls.length > 0) {
             const last = responseEls[responseEls.length - 1];
-            // Prefer markdown element inside response
             const md = last.querySelector('.markdown, [class*="markdown"]');
             if (md) {
                 const text = cleanExtractedText(md.innerText);
@@ -55,28 +56,6 @@
             if (text.length > 0) return text;
         }
         return '';
-    }
-
-    function injectGeminiInput(editor, text) {
-        editor.focus();
-        editor.innerHTML = '';
-        const lines = text.split('\n');
-        lines.forEach(line => {
-            const p = document.createElement('p');
-            if (line.trim() === '') {
-                p.innerHTML = '<br>';
-            } else {
-                p.textContent = line;
-            }
-            editor.appendChild(p);
-        });
-
-        // Trigger Angular / Quill events
-        editor.dispatchEvent(new Event('focus', { bubbles: true }));
-        editor.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertFromPaste', data: text }));
-        editor.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertFromPaste', data: text }));
-        editor.dispatchEvent(new Event('input', { bubbles: true }));
-        editor.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     window.AIBridgeUtils.setupMessageListener(async (promptText) => {
@@ -89,10 +68,10 @@
         // 1. Find and fill input
         const input = await utils.waitForElement(INPUT_SELECTORS);
         console.log('[Gemini] Input found:', input.tagName, input.className);
-        injectGeminiInput(input, promptText);
+        utils.simulateInput(input, promptText);
 
-        // 2. Wait for Angular change detection to activate send button
-        await new Promise(r => setTimeout(r, 1000));
+        // 2. Wait for Angular change detection, then send
+        await new Promise(r => setTimeout(r, 800));
 
         let sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
         if (sendBtn) {
@@ -112,9 +91,9 @@
             }));
         }
 
-        // 3. Poll for response
+        // 3. Fast polling for response (max 35s, 1s interval)
         console.log('[Gemini] Polling for model response...');
-        const responseText = await pollForGeminiResponse(textBefore, promptText, 90000);
+        const responseText = await pollForGeminiResponse(textBefore, promptText, 35000);
 
         console.log('[Gemini] Final response length:', responseText.length);
         console.log('[Gemini] Response:', responseText);
@@ -147,7 +126,7 @@
                 if (text.length > 10) {
                     if (text === lastFoundText) {
                         stableCount++;
-                        if (stableCount >= 3) {
+                        if (stableCount >= 2) {
                             console.log('[Gemini] Response stable after', stableCount, 'polls');
                             resolve(text);
                             return;
@@ -164,10 +143,10 @@
                     return;
                 }
 
-                setTimeout(check, 2000);
+                setTimeout(check, 1000);
             };
 
-            setTimeout(check, 4000);
+            setTimeout(check, 2500);
         });
     }
 })();

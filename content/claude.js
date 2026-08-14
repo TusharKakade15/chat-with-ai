@@ -12,6 +12,7 @@
         'button[aria-label="Send Message"]',
         'button[aria-label="Send message"]',
         'button[aria-label="Send"]',
+        'button:has(svg)',
     ];
 
     function cleanExtractedText(rawText) {
@@ -33,7 +34,6 @@
     }
 
     function extractClaudeTextDirectly() {
-        // Look for Claude message containers
         const messageEls = document.querySelectorAll('.font-claude-message, [data-is-streaming], .grid-cols-1 .prose');
         if (messageEls.length > 0) {
             const last = messageEls[messageEls.length - 1];
@@ -50,47 +50,16 @@
         const mainEl = document.querySelector('main') || document.body;
         const textBefore = mainEl.innerText;
 
-        // 1. Find the input field
+        // 1. Find and fill input
         const input = await utils.waitForElement(INPUT_SELECTORS);
         console.log('[Claude] Input found:', input.tagName, input.className);
+        utils.simulateInput(input, promptText);
 
-        // 2. Type text into Claude's ProseMirror editor
-        input.focus();
-        await new Promise(r => setTimeout(r, 300));
-
-        const selection = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(input);
-        selection.removeAllRanges();
-        selection.addRange(range);
-
-        try {
-            const clipboardData = new DataTransfer();
-            clipboardData.setData('text/plain', promptText);
-            input.dispatchEvent(new ClipboardEvent('paste', {
-                bubbles: true, cancelable: true, clipboardData: clipboardData
-            }));
-            console.log('[Claude] Pasted via ClipboardEvent');
-        } catch (e) {
-            console.log('[Claude] ClipboardEvent failed');
-        }
-
-        await new Promise(r => setTimeout(r, 500));
-
-        if ((input.textContent || '').trim().length < 10) {
-            console.log('[Claude] Trying paragraph insertion...');
-            input.innerHTML = '';
-            const p = document.createElement('p');
-            p.textContent = promptText;
-            input.appendChild(p);
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-
-        // 3. Send once (prefer send button, fallback to Enter)
+        // 2. Wait then send
         await new Promise(r => setTimeout(r, 800));
         const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
         if (sendBtn) {
-            console.log('[Claude] Sending via send button (single click)...');
+            console.log('[Claude] Sending via send button...');
             utils.clickButton(sendBtn);
         } else {
             console.log('[Claude] Pressing Enter to send...');
@@ -98,11 +67,17 @@
             input.dispatchEvent(new KeyboardEvent('keydown', {
                 key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
             }));
+            input.dispatchEvent(new KeyboardEvent('keypress', {
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
+            }));
+            input.dispatchEvent(new KeyboardEvent('keyup', {
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
+            }));
         }
 
-        // 4. Poll for response
+        // 3. Fast polling for response (max 35s, 1s interval)
         console.log('[Claude] Polling for response...');
-        const responseText = await pollForClaudeResponse(textBefore, promptText, 90000);
+        const responseText = await pollForClaudeResponse(textBefore, promptText, 35000);
 
         console.log('[Claude] Final response length:', responseText.length);
         console.log('[Claude] Response:', responseText);
@@ -135,7 +110,7 @@
                 if (text.length > 10) {
                     if (text === lastFoundText) {
                         stableCount++;
-                        if (stableCount >= 3) {
+                        if (stableCount >= 2) {
                             console.log('[Claude] Response stable after', stableCount, 'polls');
                             resolve(text);
                             return;
@@ -152,10 +127,10 @@
                     return;
                 }
 
-                setTimeout(check, 2000);
+                setTimeout(check, 1000);
             };
 
-            setTimeout(check, 4000);
+            setTimeout(check, 2500);
         });
     }
 })();
