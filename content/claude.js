@@ -8,15 +8,6 @@
         'div[contenteditable="true"]',
     ];
 
-    // Explicit send button selectors only (NO generic button:has(svg) which triggered Settings modal)
-    const SEND_BUTTON_SELECTORS = [
-        'button[aria-label="Send Message"]',
-        'button[aria-label="Send message"]',
-        'button[aria-label="Send"]',
-        'fieldset button:last-of-type',
-        'button[aria-label*="Send"]',
-    ];
-
     function cleanExtractedText(rawText) {
         if (!rawText) return '';
         const lines = rawText.split('\n');
@@ -36,13 +27,61 @@
     }
 
     function extractClaudeTextDirectly() {
-        const messageEls = document.querySelectorAll('.font-claude-message, [data-is-streaming], .grid-cols-1 .prose');
-        if (messageEls.length > 0) {
-            const last = messageEls[messageEls.length - 1];
+        const fontMsgs = document.querySelectorAll('.font-claude-message');
+        if (fontMsgs.length > 0) {
+            const last = fontMsgs[fontMsgs.length - 1];
             const text = cleanExtractedText(last.innerText);
             if (text.length > 5) return text;
         }
+
+        const proseMsgs = document.querySelectorAll('[data-is-streaming] .grid, .grid-cols-1 .prose, .prose');
+        if (proseMsgs.length > 0) {
+            const last = proseMsgs[proseMsgs.length - 1];
+            const text = cleanExtractedText(last.innerText);
+            if (text.length > 5 && !text.includes('[SYSTEM INSTRUCTION')) return text;
+        }
+
+        const main = document.querySelector('main') || document.body;
+        const preWraps = main.querySelectorAll('.whitespace-pre-wrap');
+        if (preWraps.length > 0) {
+            const last = preWraps[preWraps.length - 1];
+            const text = cleanExtractedText(last.innerText);
+            if (text.length > 5 && !text.includes('[SYSTEM INSTRUCTION')) return text;
+        }
+
         return '';
+    }
+
+    function findClaudeSendButton() {
+        // Direct aria selectors
+        const selectors = [
+            'button[aria-label="Send Message"]',
+            'button[aria-label="Send message"]',
+            'button[aria-label="Send"]',
+            'fieldset button:last-of-type',
+            'button[aria-label*="Send"]',
+            'button[aria-label*="send"]',
+        ];
+        for (const sel of selectors) {
+            const btn = document.querySelector(sel);
+            if (btn) return btn;
+        }
+
+        // Search near ProseMirror
+        const editor = document.querySelector('.ProseMirror');
+        if (editor) {
+            const container = editor.closest('fieldset') || editor.closest('form') || editor.parentElement?.parentElement;
+            if (container) {
+                const buttons = container.querySelectorAll('button');
+                for (const b of buttons) {
+                    const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+                    if (aria.includes('send')) return b;
+                }
+                if (buttons.length > 0) return buttons[buttons.length - 1];
+            }
+        }
+
+        return null;
     }
 
     window.AIBridgeUtils.setupMessageListener(async (promptText) => {
@@ -57,9 +96,9 @@
         console.log('[Claude] Input found:', input.tagName, input.className);
         utils.simulateInput(input, promptText);
 
-        // 2. Wait then send (try send button first, fallback to Enter)
+        // 2. Wait then send
         await new Promise(r => setTimeout(r, 800));
-        const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
+        const sendBtn = findClaudeSendButton();
         if (sendBtn) {
             console.log('[Claude] Sending via send button...');
             utils.clickButton(sendBtn);

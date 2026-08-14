@@ -9,17 +9,6 @@
         'div[contenteditable="true"]',
     ];
 
-    const SEND_BUTTON_SELECTORS = [
-        'button[aria-label="Send message"]',
-        'button[aria-label="Send"]',
-        'button[aria-label*="Send"]',
-        'button[aria-label*="send"]',
-        'button.send-button',
-        '.send-button-container button',
-        'rich-textarea ~ * button',
-        'button:has(mat-icon[fonticon="send"])',
-    ];
-
     function cleanExtractedText(rawText) {
         if (!rawText) return '';
         const lines = rawText.split('\n');
@@ -44,17 +33,14 @@
             return true;
         });
         const result = cleanedLines.join('\n').trim();
-        // If result is only the conversation title or turn headers, reject
         if (result === 'You said' || result === 'Gemini said' || result.length < 10) return '';
         return result;
     }
 
     function extractGeminiTextDirectly() {
-        // Query Gemini's model response components
         const responseEls = document.querySelectorAll('model-response, message-content:not(user-query message-content), .model-response-text');
         if (responseEls.length > 0) {
             const last = responseEls[responseEls.length - 1];
-            // Prefer inner markdown element which contains only the response body
             const md = last.querySelector('.markdown, [class*="markdown"], .response-content, p');
             if (md) {
                 const text = cleanExtractedText(md.innerText);
@@ -64,6 +50,37 @@
             if (text.length > 15) return text;
         }
         return '';
+    }
+
+    function findGeminiSendButton() {
+        const selectors = [
+            'button[aria-label="Send message"]',
+            'button[aria-label="Send"]',
+            'button[aria-label*="Send"]',
+            'button[aria-label*="send"]',
+            'button.send-button',
+            '.send-button-container button',
+            'rich-textarea ~ * button',
+            'button:has(mat-icon[fonticon="send"])',
+        ];
+        for (const sel of selectors) {
+            const btn = document.querySelector(sel);
+            if (btn) return btn;
+        }
+
+        const rich = document.querySelector('rich-textarea');
+        if (rich) {
+            const container = rich.closest('.input-area') || rich.parentElement;
+            if (container) {
+                const buttons = container.querySelectorAll('button');
+                for (const b of buttons) {
+                    const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+                    if (aria.includes('send')) return b;
+                }
+                if (buttons.length > 0) return buttons[buttons.length - 1];
+            }
+        }
+        return null;
     }
 
     window.AIBridgeUtils.setupMessageListener(async (promptText) => {
@@ -81,7 +98,7 @@
         // 2. Wait for Angular change detection, then send
         await new Promise(r => setTimeout(r, 800));
 
-        let sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
+        let sendBtn = findGeminiSendButton();
         if (sendBtn) {
             utils.clickButton(sendBtn);
             console.log('[Gemini] Sent via send button');
