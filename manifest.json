@@ -8,7 +8,8 @@
     "activeTab",
     "storage",
     "clipboardRead",
-    "clipboardWrite"
+    "clipboardWrite",
+    "sidePanel"
   ],
   "host_permissions": [
     "https://chatgpt.com/*",
@@ -25,6 +26,9 @@
   },
   "action": {
     "default_title": "AI Web UI Bridge"
+  },
+  "side_panel": {
+    "default_path": "chat.html"
   },
   "content_scripts": [
     {

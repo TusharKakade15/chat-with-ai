@@ -236,6 +236,7 @@
                 });
 
                 if (isNew) {
+                    chrome.runtime.sendMessage({ type: 'STREAM_UPDATE', text: currentText, agent: 'Gemini' }).catch(() => {});
                     if (currentText === lastText) {
                         stableCount++;
                     } else {

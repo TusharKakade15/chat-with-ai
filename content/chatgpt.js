@@ -205,6 +205,7 @@
                 });
 
                 if (isNew) {
+                    chrome.runtime.sendMessage({ type: 'STREAM_UPDATE', text: currentText, agent: 'ChatGPT' }).catch(() => {});
                     if (currentText === lastText) {
                         stableCount++;
                     } else {

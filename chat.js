@@ -103,7 +103,11 @@ document.addEventListener('DOMContentLoaded', () => {
         
         messagesContainer.appendChild(msgDiv);
         scrollToBottom();
+        return msgDiv;
     }
+
+    let currentStreamDiv = null;
+    let currentStreamAgent = null;
 
     function setTypingIndicator(agentName) {
         removeTypingIndicator();
@@ -166,9 +170,26 @@ document.addEventListener('DOMContentLoaded', () => {
             // If text is provided, the agent finished generating
             if (message.text !== undefined && message.text !== null && message.currentAgent) {
                 removeTypingIndicator();
-                const agentClass = message.currentAgent.toLowerCase();
-                const displayText = message.text || '(No response captured)';
-                appendMessage(message.currentAgent, displayText, 'ai', agentClass);
+                if (currentStreamDiv && currentStreamAgent === message.currentAgent) {
+                    const bubble = currentStreamDiv.querySelector('.message-bubble');
+                    if (bubble) bubble.innerHTML = escapeHtml(message.text);
+                    currentStreamDiv = null;
+                    currentStreamAgent = null;
+                } else {
+                    const agentClass = message.currentAgent.toLowerCase();
+                    const displayText = message.text || '(No response captured)';
+                    appendMessage(message.currentAgent, displayText, 'ai', agentClass);
+                }
+            }
+        } else if (message.type === 'STREAM_UPDATE') {
+            removeTypingIndicator();
+            if (!currentStreamDiv || currentStreamAgent !== message.agent) {
+                currentStreamAgent = message.agent;
+                currentStreamDiv = appendMessage(message.agent, message.text, 'ai', message.agent.toLowerCase());
+            } else {
+                const bubble = currentStreamDiv.querySelector('.message-bubble');
+                if (bubble) bubble.innerHTML = escapeHtml(message.text);
+                scrollToBottom();
             }
         }
     });

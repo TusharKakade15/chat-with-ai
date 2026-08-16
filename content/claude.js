@@ -14,9 +14,6 @@
         'button[aria-label="Send Message"]',
         'button[aria-label="Send message"]',
         'button[aria-label="Send"]',
-        'button[aria-label*="Send"]',
-        'button[aria-label*="send"]',
-        'fieldset button:last-of-type',
         'button[data-testid="send-button"]'
     ];
 
@@ -29,26 +26,24 @@
         '.is-streaming'
     ];
 
-    // ─── Turn Counting & Extraction ────────────────────────────────────
-
     function getAssistantTurnCount() {
-        const msgs = document.querySelectorAll('.font-claude-message, [data-is-streaming], div[data-test-render-id]');
+        const msgs = document.querySelectorAll('.font-claude-message, [data-message-author="claude"], [data-message-author="assistant"], [data-is-streaming], div[data-test-render-id]');
         return msgs.length;
     }
 
     function getLatestAssistantText() {
         const main = document.querySelector('main') || document.body;
 
-        // Strategy 1: Font Claude message elements
-        const fontMsgs = Array.from(main.querySelectorAll('.font-claude-message'));
-        if (fontMsgs.length > 0) {
-            const last = fontMsgs[fontMsgs.length - 1];
+        // Strategy 1: Specific Claude classes/attributes
+        const claudeMsgs = Array.from(main.querySelectorAll('.font-claude-message, [data-message-author="claude"], [data-message-author="assistant"]'));
+        if (claudeMsgs.length > 0) {
+            const last = claudeMsgs[claudeMsgs.length - 1];
             const text = extractText(last);
             if (text.length > 0) return text;
         }
 
         // Strategy 2: Prose / markdown blocks not belonging to user
-        const proseMsgs = Array.from(main.querySelectorAll('.prose, [class*="prose"], div[class*="message-content"]'));
+        const proseMsgs = Array.from(main.querySelectorAll('.prose, [class*="prose"], .markdown, div[class*="message-content"]'));
         for (let i = proseMsgs.length - 1; i >= 0; i--) {
             const el = proseMsgs[i];
             if (el.closest('[data-message-author="human"]') || el.closest('.font-user-message')) continue;
@@ -66,11 +61,11 @@
         clone.querySelectorAll(
             'script, style, noscript, template, button, nav, svg, ' +
             '[role="button"], .sr-only, [data-testid*="action"], ' +
-            '.action-bar, .feedback-container'
+            '.action-bar, .feedback-container, fieldset'
         ).forEach(n => n.remove());
 
         const content = clone.querySelector(
-            '.prose, [class*="prose"], .whitespace-pre-wrap'
+            '.prose, [class*="prose"], .markdown, .whitespace-pre-wrap'
         ) || clone;
 
         const raw = content.textContent || '';
@@ -188,6 +183,7 @@
                 });
 
                 if (isNew) {
+                    chrome.runtime.sendMessage({ type: 'STREAM_UPDATE', text: currentText, agent: 'Claude' }).catch(() => {});
                     if (currentText === lastText) {
                         stableCount++;
                     } else {

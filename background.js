@@ -52,7 +52,7 @@ async function getAiTabReady(aiKey) {
     }
   } else {
     console.log(`[${aiKey}] No tab found, opening new one in background...`);
-    const newTab = await chrome.tabs.create({ url: config.newChatUrl, active: false });
+    const newTab = await chrome.tabs.create({ url: config.newChatUrl, active: false, pinned: true });
     tabId = newTab.id;
     await waitForTabLoad(tabId);
   }
@@ -88,23 +88,18 @@ async function ensureContentScriptReady(tabId, label) {
   throw new Error(`Could not connect to ${label}. Please make sure you are logged into ${label} in your browser.`);
 }
 
-chrome.action.onClicked.addListener(async (tab) => {
-  if (chatTabId) {
-    try { await chrome.tabs.update(chatTabId, { active: true }); return; }
-    catch (e) { chatTabId = null; }
+chrome.runtime.onInstalled.addListener(() => {
+  if (chrome.sidePanel) {
+    try {
+      chrome.sidePanel.setPanelBehavior({ openPanelOnActionIconClick: true }).catch(() => {});
+    } catch (e) {
+      console.warn('SidePanel behavior setting failed (likely unsupported parameter in this browser):', e.message);
+    }
   }
-  const newTab = await chrome.tabs.create({ url: 'chat.html' });
-  chatTabId = newTab.id;
-});
-
-chrome.tabs.onRemoved.addListener((tabId) => {
-  if (tabId === chatTabId) chatTabId = null;
 });
 
 function sendUiUpdate(update) {
-  if (chatTabId) {
-    chrome.tabs.sendMessage(chatTabId, { type: 'UI_UPDATE', ...update }).catch(() => {});
-  }
+  chrome.runtime.sendMessage({ type: 'UI_UPDATE', ...update }).catch(() => {});
 }
 
 function sendPromptToTab(tabId, prompt) {
@@ -136,30 +131,20 @@ async function handleSingleAgent(agentKey, prompt) {
     sendUiUpdate({ status: 'Idle', currentAgent: null });
   } catch (error) {
     console.error(`[${agentKey}] Error:`, error);
-    if (chatTabId) {
-      try { await chrome.tabs.update(chatTabId, { active: true }); } catch (e) {}
-    }
     const errorMsg = (error && error.message) ? error.message : String(error);
     sendUiUpdate({ status: `Error: ${errorMsg}`, currentAgent: null });
   }
 }
 
-// Helper: activate AI tab, send prompt, switch back to extension
+// Helper: activate AI tab, send prompt
 async function sendPromptWithTabSwitch(tabId, prompt, agentName) {
-  const savedExtTabId = chatTabId;
   try {
     await chrome.tabs.update(tabId, { active: true });
     await new Promise(r => setTimeout(r, 500));
   } catch (e) {
     console.warn(`[${agentName}] Could not activate tab:`, e.message);
   }
-
-  const response = await sendPromptToTab(tabId, prompt);
-
-  if (savedExtTabId) {
-    try { await chrome.tabs.update(savedExtTabId, { active: true }); } catch (e) {}
-  }
-  return response;
+  return await sendPromptToTab(tabId, prompt);
 }
 
 async function handleBroadcast(initialPrompt) {
@@ -204,9 +189,6 @@ async function handleBroadcast(initialPrompt) {
 
   } catch (error) {
     console.error('Broadcast Error:', error);
-    if (chatTabId) {
-      try { await chrome.tabs.update(chatTabId, { active: true }); } catch (e) {}
-    }
     let errorMsg = (error && error.message) ? error.message : String(error);
     sendUiUpdate({ status: `Error: ${errorMsg}`, currentAgent: null });
   }
