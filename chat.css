@@ -85,6 +85,39 @@ body {
     box-shadow: 0 0 5px #238636;
 }
 
+.mode-select-container {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sidebar-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.mode-select {
+    width: 100%;
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    font-family: var(--font-family);
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.mode-select:focus {
+    border-color: var(--accent-color);
+}
+
 .agents-status {
     display: flex;
     flex-direction: column;

@@ -1,166 +1,270 @@
-// Gemini Content Script
+// Gemini Content Script — Complete Modern Rewrite
+// Follows the same robust architecture as ChatGPT & Claude
 
 (function() {
     const INPUT_SELECTORS = [
-        '.ql-editor[contenteditable="true"]',
         'rich-textarea [contenteditable="true"]',
+        '.ql-editor[contenteditable="true"]',
         '.text-input-field [contenteditable="true"]',
         'div.ql-editor',
         'div[contenteditable="true"]',
+        'textarea'
     ];
 
     const SEND_BUTTON_SELECTORS = [
         'button[aria-label="Send message"]',
+        'button[aria-label="Send prompt"]',
         'button[aria-label="Send"]',
         'button[aria-label*="Send"]',
         'button[aria-label*="send"]',
         'button.send-button',
         '.send-button-container button',
         'rich-textarea ~ * button',
-        'button:has(mat-icon[fonticon="send"])',
+        'button:has(mat-icon[fonticon="send"])'
     ];
 
-    function cleanExtractedText(rawText) {
-        if (!rawText) return '';
-        const lines = rawText.split('\n');
-        const cleanedLines = lines.filter(line => {
-            const trimmed = line.trim();
-            if (!trimmed) return false;
-            if (/^<?\s*\d+\s*\/\s*\d+\s*>?$/.test(trimmed)) return false;
-            // Filter prompt text & headers
-            if (trimmed.includes('[SYSTEM INSTRUCTION')) return false;
-            if (trimmed.includes('User asked:')) return false;
-            if (trimmed.includes('ChatGPT said:')) return false;
-            if (trimmed.includes('Claude said:')) return false;
-            if (trimmed.includes('Provide a final synthesis')) return false;
-            // Filter Gemini turn headers & UI badges
-            if (trimmed === 'You said' || trimmed === 'Gemini said') return false;
-            if (trimmed === 'Show drafts' || trimmed.startsWith('Draft ')) return false;
-            if (trimmed === 'Gemini is AI and can make mistakes.') return false;
-            if (trimmed === 'Gemini can make mistakes.') return false;
-            if (trimmed === 'Ask Gemini') return false;
-            if (trimmed === 'New chat' || trimmed === 'Search chats') return false;
-            if (trimmed === 'Upgrade' || trimmed === 'Notebooks' || trimmed === 'New notebook' || trimmed === 'Recents' || trimmed === 'Flash') return false;
-            if (trimmed === 'Copy' || trimmed === 'Share' || trimmed === 'Good response' || trimmed === 'Bad response' || trimmed === 'Modify response') return false;
-            return true;
-        });
-        const result = cleanedLines.join('\n').trim();
-        if (result === 'You said' || result === 'Gemini said' || result.length < 10) return '';
-        return result;
+    const STOP_BUTTON_SELECTORS = [
+        'button[aria-label="Stop response"]',
+        'button[aria-label="Stop generating"]',
+        'button[aria-label*="Stop"]',
+        'button[data-test-id="stop-button"]',
+        'mat-progress-spinner',
+        'mat-spinner',
+        '.loading-spinner',
+        '.sparkle-container.animating',
+        '.glance-progress-bar'
+    ];
+
+    // ─── Turn Counting & Extraction ────────────────────────────────────
+
+    function getAssistantTurnCount() {
+        const responseEls = document.querySelectorAll('model-response, .model-response, message-content:not(user-query message-content)');
+        return responseEls.length;
     }
 
-    function isSidebarGarbage(text) {
-        if (!text) return true;
-        if (text.includes('Notebooks') || text.includes('New notebook') || text.includes('Recents') || text.includes('Azure DevOps')) return true;
-        return false;
-    }
-
-    function extractGeminiTextDirectly() {
-        const responseEls = document.querySelectorAll('model-response, message-content:not(user-query message-content), .model-response-text');
+    function getLatestAssistantText() {
+        // Strategy 1: Target model-response elements
+        const responseEls = Array.from(document.querySelectorAll('model-response, .model-response, message-content:not(user-query message-content)'));
         if (responseEls.length > 0) {
             const last = responseEls[responseEls.length - 1];
-            const md = last.querySelector('.markdown, [class*="markdown"], .response-content, p');
-            if (md) {
-                const text = cleanExtractedText(md.innerText);
-                if (text.length > 10 && !isSidebarGarbage(text)) return text;
-            }
-            const text = cleanExtractedText(last.innerText);
-            if (text.length > 15 && !isSidebarGarbage(text)) return text;
+            const text = extractText(last);
+            if (text.length > 0) return text;
         }
+
+        // Strategy 2: Target response-content or markdown containers in main
+        const main = document.querySelector('.conversation-container, main') || document.body;
+        const markdowns = Array.from(main.querySelectorAll('.model-response-text, .response-content, .markdown, [class*="markdown"]'));
+        for (let i = markdowns.length - 1; i >= 0; i--) {
+            const el = markdowns[i];
+            if (el.closest('user-query')) continue;
+            const text = extractText(el);
+            if (text.length > 0) return text;
+        }
+
         return '';
     }
 
+    function extractText(el) {
+        if (!el) return '';
+        const clone = el.cloneNode(true);
+
+        // Strip non-content / intermediate state elements (thinking boxes, search chips, actions, buttons)
+        clone.querySelectorAll(
+            'script, style, noscript, template, button, nav, svg, ' +
+            '[role="button"], .sr-only, [data-test-id*="action"], ' +
+            'thought-box, gds-thought-expansion, model-thought, .thought-container, ' +
+            '.sources-container, sources-carousel, source-list, citation-container, ' +
+            '.citation-tag, search-summary, .status-container, .tool-status, ' +
+            'mat-progress-spinner, mat-spinner, .model-response-header, .response-feedback'
+        ).forEach(n => n.remove());
+
+        // Find primary markdown or content container
+        const content = clone.querySelector(
+            '.markdown, [class*="markdown"], .model-response-text, .response-content, .message-content, div.text-message, .whitespace-pre-wrap'
+        ) || clone;
+
+        // Use textContent for safety
+        const raw = content.textContent || '';
+        return cleanText(raw);
+    }
+
+    function cleanText(raw) {
+        if (!raw) return '';
+
+        const junkExact = new Set([
+            'Gemini is AI and can make mistakes.',
+            'Gemini can make mistakes.',
+            'Ask Gemini',
+            'Searching the web',
+            'Searching Google',
+            'Synthesizing Roundtable Inputs',
+            'Synthesizing...',
+            'Answer now',
+            'Thinking...',
+            'Thought Process',
+            'Show drafts',
+            'New chat',
+            'Search chats',
+            'Upgrade',
+            'Notebooks',
+            'New notebook',
+            'Recents',
+            'Flash',
+            'Copy',
+            'Share',
+            'Good response',
+            'Bad response',
+            'Modify response',
+            'Export response',
+            'Listen',
+            'Double-check response'
+        ]);
+
+        const lines = raw.split('\n')
+            .map(l => l.trim())
+            .filter(l => {
+                if (!l) return false;
+                if (junkExact.has(l)) return false;
+                if (/^Draft\s+\d+$/i.test(l)) return false;
+                if (/^Thought\s+for\s+\d+\s+seconds?$/i.test(l)) return false;
+                if (/^<\s*\d+\s*\/\s*\d+\s*>$/.test(l)) return false;
+                if (l.startsWith('{function') || l.includes('__oai_')) return false;
+                if (l.includes('[SYSTEM INSTRUCTION')) return false;
+                if (l.startsWith('User asked:') || l.startsWith('ChatGPT said:') || l.startsWith('Claude said:')) return false;
+                if (l.startsWith('Provide a final synthesis')) return false;
+                if (l.startsWith('Gemini said:') || l.startsWith('You said:')) return false;
+                return true;
+            });
+
+        return lines.join('\n').trim();
+    }
+
+    function isGenerating() {
+        const utils = window.AIBridgeUtils;
+        const stopBtn = utils.findStopButton(STOP_BUTTON_SELECTORS);
+        if (stopBtn) return true;
+
+        const spinner = document.querySelector('mat-progress-spinner, mat-spinner, .loading-spinner, .sparkle-container.animating');
+        if (spinner) return true;
+
+        const streaming = document.querySelector('[data-is-streaming="true"], .result-streaming, .is-streaming');
+        if (streaming) return true;
+
+        return false;
+    }
+
+    // ─── Prompt Injection & Lifecycle ──────────────────────────────────
+
     window.AIBridgeUtils.setupMessageListener(async (promptText) => {
         const utils = window.AIBridgeUtils;
-        console.log('[Gemini] Starting prompt injection...');
+        console.log('[Gemini] Prompt injection starting...');
 
-        const mainEl = document.querySelector('.conversation-container, main') || document.body;
-        const textBefore = mainEl.innerText;
+        // Snapshot state before sending
+        const turnCountBefore = getAssistantTurnCount();
+        const textBefore = getLatestAssistantText();
+        console.log('[Gemini] Turns before:', turnCountBefore, '| Text before length:', textBefore.length);
 
         // 1. Find and fill input
-        const input = await utils.waitForElement(INPUT_SELECTORS);
+        const input = await utils.waitForElement(INPUT_SELECTORS, 15000);
         console.log('[Gemini] Input found:', input.tagName, input.className);
         utils.simulateInput(input, promptText);
 
-        // 2. Wait for Angular change detection, then send
-        await new Promise(r => setTimeout(r, 800));
-
-        let sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
-        if (sendBtn) {
-            utils.clickButton(sendBtn);
-            console.log('[Gemini] Sent via send button');
-        } else {
-            console.log('[Gemini] Send button not found, sending via Enter key...');
-            input.focus();
-            input.dispatchEvent(new KeyboardEvent('keydown', { 
-                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true 
-            }));
-            input.dispatchEvent(new KeyboardEvent('keypress', { 
-                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true 
-            }));
-            input.dispatchEvent(new KeyboardEvent('keyup', { 
-                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true 
-            }));
+        // 2. Allow Angular/Quill change detection to settle, then click send
+        let sent = false;
+        for (let attempt = 0; attempt < 15; attempt++) {
+            await new Promise(r => setTimeout(r, 300));
+            const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
+            if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute('aria-disabled') !== 'true') {
+                console.log('[Gemini] Send button ready, clicking.');
+                utils.clickButton(sendBtn);
+                sent = true;
+                break;
+            }
         }
 
-        // 3. Fast polling for model response
-        console.log('[Gemini] Polling for model response...');
-        const responseText = await pollForGeminiResponse(textBefore, promptText, 35000);
+        if (!sent) {
+            console.log('[Gemini] Send button not found or disabled, sending via Enter key.');
+            utils.pressEnter(input);
+        }
 
-        console.log('[Gemini] Final response length:', responseText.length);
-        console.log('[Gemini] Response:', responseText);
-        return responseText || 'Error: Could not find Gemini response';
+        // 3. Wait for new response
+        console.log('[Gemini] Waiting for response...');
+        const response = await waitForResponse(turnCountBefore, textBefore, promptText, 60000);
+        console.log('[Gemini] Final response length:', response.length);
+        console.log('[Gemini] Response:', response.substring(0, 100));
+        return response || 'Error: Could not extract Gemini response.';
     });
 
-    function pollForGeminiResponse(textBefore, promptText, timeout) {
+    // ─── Polling for Response ──────────────────────────────────────────
+
+    function waitForResponse(turnCountBefore, textBefore, promptText, timeoutMs) {
         return new Promise((resolve) => {
             const start = Date.now();
-            const beforeLines = new Set(textBefore.split('\n').map(l => l.trim()).filter(l => l.length > 0));
-            const promptLines = new Set(promptText.split('\n').map(l => l.trim()).filter(l => l.length > 0));
-            
-            let lastFoundText = '';
+            let lastText = '';
             let stableCount = 0;
+            let sawGenerating = false;
 
-            const check = () => {
-                let text = extractGeminiTextDirectly();
+            const poll = setInterval(() => {
+                const elapsed = Date.now() - start;
+                const generating = isGenerating();
+                if (generating) sawGenerating = true;
 
-                if (!text || text.length < 10) {
-                    const mainEl = document.querySelector('.conversation-container, main');
-                    if (mainEl) {
-                        const afterLines = mainEl.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                        const newLines = afterLines.filter(line => {
-                            if (beforeLines.has(line)) return false;
-                            if (promptLines.has(line)) return false;
-                            return true;
-                        });
-                        text = cleanExtractedText(newLines.join('\n'));
-                    }
-                }
+                const turnCountNow = getAssistantTurnCount();
+                const currentText = getLatestAssistantText();
 
-                if (text.length > 15 && !isSidebarGarbage(text)) {
-                    if (text === lastFoundText) {
+                // Validation: Must be real content, not an intermediate search tool pill
+                const isIntermediary = (
+                    currentText === 'Searching the web' ||
+                    currentText === 'Synthesizing Roundtable Inputs' ||
+                    currentText === 'Answer now' ||
+                    currentText.length < 15
+                );
+
+                const isNew = (
+                    !isIntermediary &&
+                    currentText !== promptText.trim() &&
+                    (turnCountNow > turnCountBefore || currentText !== textBefore)
+                );
+
+                console.log('[Gemini Poll]', {
+                    elapsed: elapsed + 'ms',
+                    generating,
+                    sawGenerating,
+                    turns: turnCountBefore + '→' + turnCountNow,
+                    textLen: currentText.length,
+                    isNew
+                });
+
+                if (isNew) {
+                    if (currentText === lastText) {
                         stableCount++;
-                        if (stableCount >= 2) {
-                            console.log('[Gemini] Response stable after', stableCount, 'polls');
-                            resolve(text);
-                            return;
-                        }
                     } else {
                         stableCount = 0;
-                        lastFoundText = text;
+                        lastText = currentText;
+                    }
+
+                    // Done when: not generating and text is stable for 3 consecutive polls (~1s)
+                    if (!generating && stableCount >= 3) {
+                        clearInterval(poll);
+                        resolve(currentText);
+                        return;
+                    }
+
+                    // Or when: not generating, stable for 1 poll, and > 4s elapsed
+                    if (!generating && stableCount >= 1 && elapsed > 4000) {
+                        clearInterval(poll);
+                        resolve(currentText);
+                        return;
                     }
                 }
 
-                if (Date.now() - start > timeout) {
-                    console.log('[Gemini] Polling timeout reached');
-                    resolve(lastFoundText || text || '');
-                    return;
+                // Safety timeout
+                if (elapsed >= timeoutMs) {
+                    clearInterval(poll);
+                    const fallback = (lastText && lastText !== promptText.trim() && !isIntermediary) ? lastText : currentText;
+                    resolve(fallback || 'Error: Gemini generation timed out.');
                 }
-
-                setTimeout(check, 1000);
-            };
-
-            setTimeout(check, 2500);
+            }, 350);
         });
     }
 })();

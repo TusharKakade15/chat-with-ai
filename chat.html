@@ -19,16 +19,24 @@
                 </div>
             </div>
             
+            <div class="mode-select-container">
+                <label for="mode-select" class="sidebar-label">Target Mode</label>
+                <select id="mode-select" class="mode-select">
+                    <option value="chatgpt" selected>ChatGPT (Single Agent)</option>
+                    <option value="broadcast">Roundtable Broadcast (All)</option>
+                </select>
+            </div>
+
             <div class="agents-status">
-                <div class="agent" id="agent-gpt">
+                <div class="agent active-selectable" id="agent-gpt" data-agent="chatgpt">
                     <div class="agent-icon gpt-color">GPT</div>
                     <span>ChatGPT</span>
                 </div>
-                <div class="agent" id="agent-claude">
+                <div class="agent" id="agent-claude" data-agent="claude">
                     <div class="agent-icon claude-color">CL</div>
                     <span>Claude</span>
                 </div>
-                <div class="agent" id="agent-gemini">
+                <div class="agent" id="agent-gemini" data-agent="gemini">
                     <div class="agent-icon gemini-color">GEM</div>
                     <span>Gemini</span>
                 </div>
@@ -38,22 +46,22 @@
         <!-- Main Chat Area -->
         <main class="chat-area">
             <header class="chat-header">
-                <h1 id="current-action">Start a Broadcast</h1>
-                <p id="action-subtitle">Enter a prompt to initiate the multi-agent round-robin discussion.</p>
+                <h1 id="current-action">Chat with ChatGPT</h1>
+                <p id="action-subtitle">Send prompts directly to your active ChatGPT web tab.</p>
             </header>
 
             <div class="messages-container" id="messages-container">
                 <!-- Messages will be injected here -->
                 <div class="welcome-message">
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="welcome-icon"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12 2.1 7.1"></path><path d="M12 12l9.9 4.9"></path></svg>
-                    <h3>Welcome to the AI Bridge</h3>
-                    <p>Automate your local web tabs to watch ChatGPT, Claude, and Gemini collaborate in real-time without API keys.</p>
+                    <h3>AI Web Bridge</h3>
+                    <p>Send prompts directly to ChatGPT and scrape verified responses locally without API keys.</p>
                 </div>
             </div>
 
             <div class="input-area">
-                <textarea id="prompt-input" placeholder="Type your initial prompt here to start the broadcast..." rows="1"></textarea>
-                <button id="broadcast-btn">Broadcast</button>
+                <textarea id="prompt-input" placeholder="Type your prompt for ChatGPT..." rows="1"></textarea>
+                <button id="send-btn">Send to ChatGPT</button>
             </div>
         </main>
     </div>

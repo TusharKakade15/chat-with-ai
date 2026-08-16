@@ -17,14 +17,14 @@ window.AIBridgeUtils = {
                 for (const sel of selectorList) {
                     const el = document.querySelector(sel);
                     if (el) {
-                        console.log('[AIBridge] Found element:', sel);
+                        console.log('[AIBridge] Found element via observer:', sel);
                         observer.disconnect();
                         return resolve(el);
                     }
                 }
             });
 
-            observer.observe(document.body, { childList: true, subtree: true });
+            observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
 
             setTimeout(() => {
                 observer.disconnect();
@@ -33,11 +33,25 @@ window.AIBridgeUtils = {
         });
     },
 
-    // Universal background-safe input simulation
+    // Universal input simulation for ProseMirror (ChatGPT, Claude) and Quill (Gemini)
     simulateInput: function(element, text) {
+        if (!element) return;
         element.focus();
 
-        if (element.contentEditable === 'true' || element.getAttribute('contenteditable') === 'true') {
+        const isContentEditable = element.contentEditable === 'true' || 
+                                  element.getAttribute('contenteditable') === 'true' ||
+                                  element.classList.contains('ProseMirror') ||
+                                  element.classList.contains('ql-editor');
+
+        if (isContentEditable) {
+            // Clear existing content first
+            element.innerHTML = '';
+            element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+
+            // Short pause to let framework react to the clear
+            element.focus();
+
+            // 1. Try execCommand (most reliable when tab is active/focused)
             let inserted = false;
             try {
                 const selection = window.getSelection();
@@ -47,12 +61,17 @@ window.AIBridgeUtils = {
                     selection.removeAllRanges();
                     selection.addRange(range);
                     inserted = document.execCommand('insertText', false, text);
+                    console.log('[AIBridge] execCommand insertText result:', inserted);
                 }
             } catch (e) {
-                inserted = false;
+                console.warn('[AIBridge] execCommand failed:', e);
             }
 
-            if (!inserted || element.textContent.trim().length === 0) {
+            // 2. Verify text was actually inserted
+            const currentText = (element.textContent || '').trim();
+            if (!inserted || currentText.length === 0 || currentText !== text.trim()) {
+                console.log('[AIBridge] execCommand did not work, using DOM fallback. Current:', currentText.length, 'Expected:', text.length);
+                // Direct DOM manipulation fallback
                 element.innerHTML = '';
                 const lines = text.split('\n');
                 lines.forEach(line => {
@@ -66,38 +85,77 @@ window.AIBridgeUtils = {
                 });
             }
 
+            // 3. Dispatch events to notify all frameworks (React, ProseMirror, Quill, Angular/Lit)
             element.dispatchEvent(new Event('focus', { bubbles: true }));
-            element.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: text }));
-            element.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: text }));
-            element.dispatchEvent(new Event('input', { bubbles: true }));
+            // InputEvent with data field is critical for ProseMirror and Quill to update internal state
+            try {
+                element.dispatchEvent(new InputEvent('beforeinput', {
+                    bubbles: true, cancelable: true, composed: true,
+                    inputType: 'insertText', data: text
+                }));
+                element.dispatchEvent(new InputEvent('input', {
+                    bubbles: true, cancelable: true, composed: true,
+                    inputType: 'insertText', data: text
+                }));
+            } catch (e) {
+                element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            }
             element.dispatchEvent(new Event('change', { bubbles: true }));
+            // Don't blur — keep focus so the Send button becomes enabled
+            console.log('[AIBridge] Input simulation complete. Final text length:', (element.textContent || '').length);
         } else {
             const setter = Object.getOwnPropertyDescriptor(
                 window.HTMLTextAreaElement.prototype, 'value'
-            ).set;
+            )?.set || Object.getOwnPropertyDescriptor(
+                window.HTMLInputElement.prototype, 'value'
+            )?.set;
+
             if (setter) {
                 setter.call(element, text);
             } else {
                 element.value = text;
             }
-            element.dispatchEvent(new Event('input', { bubbles: true }));
-            element.dispatchEvent(new Event('change', { bubbles: true }));
+            element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            element.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
         }
     },
+
 
     // Find a send button using multiple selectors
     findSendButton: function(selectors) {
         if (!selectors) return null;
         const selectorList = Array.isArray(selectors) ? selectors : [selectors];
         for (const sel of selectorList) {
-            const btn = document.querySelector(sel);
-            if (btn) {
-                console.log('[AIBridge] Send button found via:', sel);
-                let target = btn;
-                while (target && target.tagName !== 'BUTTON') {
+            const el = document.querySelector(sel);
+            if (el) {
+                let target = el;
+                while (target && target.tagName !== 'BUTTON' && target !== document.body) {
+                    if (target.getAttribute('role') === 'button') break;
                     target = target.parentElement;
                 }
-                return target || btn;
+                const finalBtn = target || el;
+                // Verify button is not hidden or disabled
+                const style = window.getComputedStyle(finalBtn);
+                if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
+                    console.log('[AIBridge] Active send button found via:', sel);
+                    return finalBtn;
+                }
+            }
+        }
+        return null;
+    },
+
+    // Check if a stop button / streaming indicator is present
+    findStopButton: function(selectors) {
+        if (!selectors) return null;
+        const selectorList = Array.isArray(selectors) ? selectors : [selectors];
+        for (const sel of selectorList) {
+            const btn = document.querySelector(sel);
+            if (btn) {
+                const style = window.getComputedStyle(btn);
+                if (style.display !== 'none' && style.visibility !== 'hidden') {
+                    return btn;
+                }
             }
         }
         return null;
@@ -105,28 +163,53 @@ window.AIBridgeUtils = {
 
     // Click a button safely
     clickButton: function(btn) {
-        if (!btn) return;
-        if (btn.disabled) {
-            btn.disabled = false;
-            btn.removeAttribute('disabled');
+        if (!btn) return false;
+        try {
+            if (btn.disabled) {
+                btn.disabled = false;
+                btn.removeAttribute('disabled');
+            }
+            if (btn.getAttribute('aria-disabled') === 'true') {
+                btn.setAttribute('aria-disabled', 'false');
+            }
+            btn.focus();
+            btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+            btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, composed: true }));
+            btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, composed: true }));
+            btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, composed: true }));
+            btn.click();
+            console.log('[AIBridge] Button clicked');
+            return true;
+        } catch (e) {
+            console.error('[AIBridge] Error clicking button:', e);
+            return false;
         }
-        if (btn.getAttribute('aria-disabled') === 'true') {
-            btn.setAttribute('aria-disabled', 'false');
-        }
-        btn.focus();
-        btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-        btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-        btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-        btn.click();
-        console.log('[AIBridge] Button clicked');
+    },
+
+    // Simulate pressing Enter to send
+    pressEnter: function(element) {
+        if (!element) return;
+        element.focus();
+        const eventParams = {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true,
+            composed: true
+        };
+        element.dispatchEvent(new KeyboardEvent('keydown', eventParams));
+        element.dispatchEvent(new KeyboardEvent('keypress', eventParams));
+        element.dispatchEvent(new KeyboardEvent('keyup', eventParams));
+        console.log('[AIBridge] Dispatched Enter key events');
     },
 
     // Listen for messages from background script
     setupMessageListener: function(injectLogicCallback) {
         chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             if (request.type === 'PING') {
-                sendResponse({ status: 'ok' });
+                sendResponse({ status: 'ok', url: window.location.href });
                 return true;
             }
             if (request.type === 'INJECT_PROMPT') {
@@ -137,12 +220,12 @@ window.AIBridgeUtils = {
                         sendResponse({ text: text });
                     })
                     .catch(err => {
-                        console.error('[AIBridge] Error:', err);
-                        sendResponse({ text: `Error: ${err.message}` });
+                        console.error('[AIBridge] Injection Error:', err);
+                        sendResponse({ text: `Error: ${err.message || String(err)}` });
                     });
-                return true;
+                return true; // Keep channel open for async response
             }
         });
-        console.log('[AIBridge] Content script ready on:', window.location.href);
+        console.log('[AIBridge] Content script listener attached on:', window.location.href);
     }
 };

@@ -6,7 +6,9 @@
   "permissions": [
     "tabs",
     "activeTab",
-    "storage"
+    "storage",
+    "clipboardRead",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "https://chatgpt.com/*",
