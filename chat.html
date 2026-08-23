@@ -41,6 +41,33 @@
                     <span>Gemini</span>
                 </div>
             </div>
+
+            <!-- Prompt Settings Section -->
+            <div class="prompt-settings-container">
+                <button type="button" id="toggle-settings-btn" class="settings-toggle-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    <span>Prompt Settings</span>
+                    <span class="chevron" id="settings-chevron">▶</span>
+                </button>
+
+                <div id="settings-body" class="settings-body hidden">
+                    <div class="settings-field">
+                        <label for="system-instruction-input" class="sidebar-label">System Instruction</label>
+                        <textarea id="system-instruction-input" class="settings-textarea" rows="5" placeholder="Enter system instruction..."></textarea>
+                    </div>
+
+                    <div class="settings-field">
+                        <label for="turn-prompt-input" class="sidebar-label">Turn Prompt</label>
+                        <textarea id="turn-prompt-input" class="settings-textarea" rows="3" placeholder="Enter turn prompt..."></textarea>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button type="button" id="save-prompts-btn" class="settings-btn save-btn">Save</button>
+                        <button type="button" id="reset-prompts-btn" class="settings-btn reset-btn">Reset</button>
+                    </div>
+                    <div id="settings-saved-msg" class="settings-saved-msg hidden">Saved!</div>
+                </div>
+            </div>
         </aside>
 
         <!-- Main Chat Area -->
@@ -61,7 +88,10 @@
 
             <div class="input-area">
                 <textarea id="prompt-input" placeholder="Type your prompt for ChatGPT..." rows="1"></textarea>
-                <button id="send-btn">Send to ChatGPT</button>
+                <div class="input-buttons">
+                    <button id="send-btn">Send to ChatGPT</button>
+                    <button id="continue-btn" class="continue-btn hidden">Continue Round ▶</button>
+                </div>
             </div>
         </main>
     </div>

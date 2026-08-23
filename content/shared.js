@@ -145,17 +145,29 @@ window.AIBridgeUtils = {
         return null;
     },
 
+    // Check if an element is genuinely rendered and visible on screen
+    isElementVisible: function(el) {
+        if (!el) return false;
+        try {
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+                return false;
+            }
+            const rect = el.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+        } catch (e) {
+            return false;
+        }
+    },
+
     // Check if a stop button / streaming indicator is present
     findStopButton: function(selectors) {
         if (!selectors) return null;
         const selectorList = Array.isArray(selectors) ? selectors : [selectors];
         for (const sel of selectorList) {
             const btn = document.querySelector(sel);
-            if (btn) {
-                const style = window.getComputedStyle(btn);
-                if (style.display !== 'none' && style.visibility !== 'hidden') {
-                    return btn;
-                }
+            if (btn && this.isElementVisible(btn)) {
+                return btn;
             }
         }
         return null;

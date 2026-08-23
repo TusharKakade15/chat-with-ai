@@ -213,14 +213,21 @@
                         lastText = currentText;
                     }
 
-                    // Done: not generating and text is stable for 3 polls (~1s)
-                    if (!generating && stableCount >= 3) {
+                    // Done: not generating and text is stable for 2 polls (~700ms)
+                    if (!generating && stableCount >= 2) {
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
-                    // Fast path: not generating, stable for 1 poll, and > 3.5s elapsed
-                    if (!generating && stableCount >= 1 && elapsed > 3500) {
+                    // Fast path: not generating, stable for 1 poll, and > 2s elapsed
+                    if (!generating && stableCount >= 1 && elapsed > 2000) {
+                        clearInterval(poll);
+                        resolve(currentText);
+                        return;
+                    }
+                    // Safety finish: text stable for 4 polls, response is substantial
+                    if (stableCount >= 4 && currentText.length > 30 && elapsed > 2000) {
+                        console.log('[ChatGPT Poll] Text stable for 4 consecutive polls, resolving early.');
                         clearInterval(poll);
                         resolve(currentText);
                         return;

@@ -26,13 +26,9 @@
     const STOP_BUTTON_SELECTORS = [
         'button[aria-label="Stop response"]',
         'button[aria-label="Stop generating"]',
-        'button[aria-label*="Stop"]',
         'button[data-test-id="stop-button"]',
-        'mat-progress-spinner',
-        'mat-spinner',
-        '.loading-spinner',
-        '.sparkle-container.animating',
-        '.glance-progress-bar'
+        'button.stop-button',
+        '.stop-button-container button'
     ];
 
     // ─── Turn Counting & Extraction ────────────────────────────────────
@@ -144,12 +140,19 @@
         const stopBtn = utils.findStopButton(STOP_BUTTON_SELECTORS);
         if (stopBtn) return true;
 
-        const spinner = document.querySelector('mat-progress-spinner, mat-spinner, .loading-spinner, .sparkle-container.animating');
-        if (spinner) return true;
+        const streamingEl = document.querySelector('.result-streaming, .is-streaming, [data-is-streaming="true"]');
+        if (streamingEl && utils.isElementVisible(streamingEl)) return true;
 
-        const streaming = document.querySelector('[data-is-streaming="true"], .result-streaming, .is-streaming');
-        if (streaming) return true;
+        return false;
+    }
 
+    function hasFinishedGenerating() {
+        // When Gemini finishes generating, feedback/action buttons appear under the latest response
+        const lastResponse = document.querySelector('model-response:last-of-type, .model-response:last-of-type');
+        if (lastResponse) {
+            const actions = lastResponse.querySelector('response-feedback, .response-feedback, [aria-label="Good response"], [aria-label="Bad response"], [aria-label="Share response"], [aria-label="Share"], [aria-label*="Copy"]');
+            if (actions && window.AIBridgeUtils.isElementVisible(actions)) return true;
+        }
         return false;
     }
 
@@ -244,15 +247,31 @@
                         lastText = currentText;
                     }
 
-                    // Done when: not generating and text is stable for 3 consecutive polls (~1s)
-                    if (!generating && stableCount >= 3) {
+                    // Done when: not generating and text is stable for 2 consecutive polls (~700ms)
+                    if (!generating && stableCount >= 2) {
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
 
-                    // Or when: not generating, stable for 1 poll, and > 4s elapsed
-                    if (!generating && stableCount >= 1 && elapsed > 4000) {
+                    // Done when: Action/feedback buttons appear under response and text is stable for 1 poll
+                    if (hasFinishedGenerating() && stableCount >= 1) {
+                        clearInterval(poll);
+                        resolve(currentText);
+                        return;
+                    }
+
+                    // Or when: not generating, stable for 1 poll, and > 2s elapsed
+                    if (!generating && stableCount >= 1 && elapsed > 2000) {
+                        clearInterval(poll);
+                        resolve(currentText);
+                        return;
+                    }
+
+                    // Safety finish: text has been completely unchanged for 4 consecutive polls (~1.4s)
+                    // and response length is substantial, resolving immediately without waiting for timeout
+                    if (stableCount >= 4 && currentText.length > 30 && elapsed > 2000) {
+                        console.log('[Gemini Poll] Text stable for 4 consecutive polls, resolving early.');
                         clearInterval(poll);
                         resolve(currentText);
                         return;

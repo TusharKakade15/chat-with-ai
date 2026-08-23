@@ -57,6 +57,8 @@ body {
     display: flex;
     flex-direction: column;
     padding: 20px;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .sidebar-header {
@@ -335,3 +337,186 @@ button:disabled {
     50% { opacity: 1; }
     100% { opacity: 0.6; }
 }
+
+/* Utility */
+.hidden {
+    display: none !important;
+}
+
+/* Input Buttons Container */
+.input-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+/* Continue Button */
+.continue-btn {
+    background-color: var(--accent-color) !important;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--font-family);
+    font-size: 0.85rem;
+    transition: background-color 0.2s, transform 0.1s;
+    height: auto;
+    white-space: nowrap;
+}
+
+.continue-btn:hover {
+    background-color: #4090e0 !important;
+    transform: translateY(-1px);
+}
+
+/* Round Separator */
+.round-separator {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.round-separator::before,
+.round-separator::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-color);
+}
+
+.round-separator .round-label {
+    background: var(--sidebar-bg);
+    padding: 4px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+/* Prompt Settings */
+.prompt-settings-container {
+    margin-top: 20px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 16px;
+}
+
+.settings-toggle-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    height: auto;
+}
+
+.settings-toggle-btn:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    border-color: var(--accent-color);
+}
+
+.settings-toggle-btn span:first-of-type {
+    flex-grow: 1;
+    text-align: left;
+    margin-left: 6px;
+}
+
+.settings-toggle-btn .chevron {
+    font-size: 0.7rem;
+    transition: transform 0.2s ease;
+}
+
+.settings-body {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.settings-textarea {
+    width: 100%;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 8px 10px;
+    font-family: var(--font-family);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    resize: vertical;
+    max-height: 150px;
+    transition: border-color 0.2s;
+}
+
+.settings-textarea:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.settings-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.settings-btn {
+    flex: 1;
+    height: 32px;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.settings-btn.save-btn {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+.settings-btn.save-btn:hover {
+    background-color: #4090e0;
+}
+
+.settings-btn.reset-btn {
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.settings-btn.reset-btn:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.settings-saved-msg {
+    font-size: 0.75rem;
+    color: #3fb950;
+    text-align: center;
+    font-weight: 500;
+    animation: fadeIn 0.2s ease-out;
+}
+
+

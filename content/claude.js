@@ -242,15 +242,23 @@
                         lastText = currentText;
                     }
 
-                    // Done when: not generating and text is stable for 3 consecutive polls
-                    if (!generating && stableCount >= 3) {
+                    // Done when: not generating and text is stable for 2 consecutive polls
+                    if (!generating && stableCount >= 2) {
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
 
-                    // Or when: not generating, stable for 1 poll, and > 4s elapsed
-                    if (!generating && stableCount >= 1 && elapsed > 4000) {
+                    // Or when: not generating, stable for 1 poll, and > 2s elapsed
+                    if (!generating && stableCount >= 1 && elapsed > 2000) {
+                        clearInterval(poll);
+                        resolve(currentText);
+                        return;
+                    }
+
+                    // Safety finish: text stable for 4 polls, response is substantial
+                    if (stableCount >= 4 && currentText.length > 30 && elapsed > 2000) {
+                        console.log('[Claude Poll] Text stable for 4 consecutive polls, resolving early.');
                         clearInterval(poll);
                         resolve(currentText);
                         return;

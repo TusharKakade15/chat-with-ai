@@ -2,13 +2,56 @@
 
 let chatTabId = null;
 
-const SYSTEM_INSTRUCTION = `[SYSTEM INSTRUCTION: You are participating in a multi-AI roundtable discussion with other AI models. Keep your response concise, conversational, and direct (under 150 words). Do not output massive blocks of text. Acknowledge points made by others if provided, and build upon them or critique them briefly.]`;
+// Flat conversation log — each AI gets only the last 3 entries (sliding window)
+let conversationLog = [];
+let currentRoundNumber = 0;
+
+const DEFAULT_SYSTEM_INSTRUCTION = `[SYSTEM INSTRUCTION: You are participating in a multi-AI roundtable discussion with other AI models. Keep your response concise, conversational, and direct (under 150 words). Do not output massive blocks of text. Acknowledge points made by others if provided, and build upon them or critique them briefly.]`;
+const DEFAULT_TURN_PROMPT = `What is your perspective? Respond conversationally.`;
+
+let customSystemInstruction = DEFAULT_SYSTEM_INSTRUCTION;
+let customTurnPrompt = DEFAULT_TURN_PROMPT;
+
+// Load stored custom prompts if present
+if (chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get(['systemInstruction', 'turnPrompt'], (res) => {
+    if (res.systemInstruction) customSystemInstruction = res.systemInstruction;
+    if (res.turnPrompt) customTurnPrompt = res.turnPrompt;
+  });
+
+  // Listen for real-time storage updates
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local') {
+      if (changes.systemInstruction) customSystemInstruction = changes.systemInstruction.newValue || DEFAULT_SYSTEM_INSTRUCTION;
+      if (changes.turnPrompt) customTurnPrompt = changes.turnPrompt.newValue || DEFAULT_TURN_PROMPT;
+    }
+  });
+}
 
 const AI_CONFIG = {
   chatgpt: { searchPrefix: 'https://chatgpt.com', newChatUrl: 'https://chatgpt.com/' },
   claude:  { searchPrefix: 'https://claude.ai',   newChatUrl: 'https://claude.ai/new' },
   gemini:  { searchPrefix: 'https://gemini.google.com', newChatUrl: 'https://gemini.google.com/app' }
 };
+
+// ─── Side Panel Behavior ──────────────────────────────────────────────
+// Top-level: runs every time the service worker starts (not just on install)
+if (chrome.sidePanel) {
+  try {
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionIconClick: true }).catch(() => {});
+  } catch (e) {
+    console.warn('[AIBridge] SidePanel behavior setting failed:', e.message);
+  }
+}
+
+// Fallback: if setPanelBehavior doesn't take effect, explicitly open on click
+chrome.action.onClicked.addListener((tab) => {
+  if (chrome.sidePanel) {
+    chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
+  }
+});
+
+// ─── Tab Lifecycle ────────────────────────────────────────────────────
 
 function waitForTabLoad(tabId) {
   return new Promise((resolve) => {
@@ -88,15 +131,7 @@ async function ensureContentScriptReady(tabId, label) {
   throw new Error(`Could not connect to ${label}. Please make sure you are logged into ${label} in your browser.`);
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  if (chrome.sidePanel) {
-    try {
-      chrome.sidePanel.setPanelBehavior({ openPanelOnActionIconClick: true }).catch(() => {});
-    } catch (e) {
-      console.warn('SidePanel behavior setting failed (likely unsupported parameter in this browser):', e.message);
-    }
-  }
-});
+// ─── Messaging Helpers ────────────────────────────────────────────────
 
 function sendUiUpdate(update) {
   chrome.runtime.sendMessage({ type: 'UI_UPDATE', ...update }).catch(() => {});
@@ -112,30 +147,6 @@ function sendPromptToTab(tabId, prompt) {
   });
 }
 
-async function handleSingleAgent(agentKey, prompt) {
-  try {
-    const agentName = agentKey === 'chatgpt' ? 'ChatGPT' : (agentKey === 'claude' ? 'Claude' : 'Gemini');
-    sendUiUpdate({ status: `Connecting to ${agentName}...`, currentAgent: agentName });
-    
-    const tabId = await getAiTabReady(agentKey);
-    sendUiUpdate({ status: `Sending prompt to ${agentName}...`, currentAgent: agentName });
-    
-    const response = await sendPromptWithTabSwitch(tabId, prompt, agentName);
-    console.log(`[${agentName}] Response received:`, response);
-    
-    sendUiUpdate({ 
-      status: `${agentName} responded.`, 
-      currentAgent: agentName, 
-      text: response.text 
-    });
-    sendUiUpdate({ status: 'Idle', currentAgent: null });
-  } catch (error) {
-    console.error(`[${agentKey}] Error:`, error);
-    const errorMsg = (error && error.message) ? error.message : String(error);
-    sendUiUpdate({ status: `Error: ${errorMsg}`, currentAgent: null });
-  }
-}
-
 // Helper: activate AI tab, send prompt
 async function sendPromptWithTabSwitch(tabId, prompt, agentName) {
   try {
@@ -147,52 +158,177 @@ async function sendPromptWithTabSwitch(tabId, prompt, agentName) {
   return await sendPromptToTab(tabId, prompt);
 }
 
-async function handleBroadcast(initialPrompt) {
+// ─── Sliding Window Context ──────────────────────────────────────────
+// Each AI gets only the last 3 entries from the conversation log.
+// This keeps prompts short and avoids sending the whole history repeatedly.
+
+function getLastNEntries(n) {
+  return conversationLog.slice(-n);
+}
+
+function formatSlidingContext(entries) {
+  if (entries.length === 0) return '';
+
+  let formatted = '\n\nRecent conversation:';
+  for (const entry of entries) {
+    formatted += `\n- ${entry.agent}: "${entry.text}"`;
+  }
+  return formatted;
+}
+
+// ─── Single Agent Mode ────────────────────────────────────────────────
+
+async function handleSingleAgent(agentKey, prompt) {
   try {
-    sendUiUpdate({ status: 'Preparing AI tabs...' });
-    const gptTabId = await getAiTabReady('chatgpt');
+    const agentName = agentKey === 'chatgpt' ? 'ChatGPT' : (agentKey === 'claude' ? 'Claude' : 'Gemini');
+    sendUiUpdate({ status: `Connecting to ${agentName}...`, currentAgent: agentName });
     
-    // Turn 1: ChatGPT
+    const tabId = await getAiTabReady(agentKey);
+    sendUiUpdate({ status: `Sending prompt to ${agentName}...`, currentAgent: agentName });
+    
+    const response = await sendPromptWithTabSwitch(tabId, prompt, agentName);
+    console.log(`[${agentName}] Response received:`, response);
+    
+    // Send final response with done flag — textfield re-enables immediately
+    sendUiUpdate({ 
+      status: `${agentName} responded.`, 
+      currentAgent: agentName, 
+      text: response.text,
+      done: true
+    });
+  } catch (error) {
+    console.error(`[${agentKey}] Error:`, error);
+    const errorMsg = (error && error.message) ? error.message : String(error);
+    sendUiUpdate({ status: `Error: ${errorMsg}`, currentAgent: null, done: true });
+  }
+}
+
+// ─── Broadcast Mode (Roundtable) ──────────────────────────────────────
+
+async function handleBroadcast(initialPrompt) {
+  // Reset for a fresh broadcast
+  conversationLog = [];
+  currentRoundNumber = 0;
+
+  // Add the user's prompt to the log
+  conversationLog.push({ agent: 'User', text: initialPrompt.trim() });
+
+  await executeRound();
+}
+
+async function handleContinueBroadcast(log, userInput) {
+  // Restore log from the Side Panel's copy
+  conversationLog = log || [];
+
+  // Determine current round number from log
+  currentRoundNumber = 0;
+  for (const entry of conversationLog) {
+    if (entry.round && entry.round > currentRoundNumber) currentRoundNumber = entry.round;
+  }
+
+  // Always add a user entry between rounds so the sliding window includes it
+  if (userInput && userInput.trim()) {
+    conversationLog.push({ agent: 'User', text: userInput.trim() });
+  } else {
+    conversationLog.push({ agent: 'User', text: 'Continue the discussion.' });
+  }
+
+  await executeRound();
+}
+
+async function executeRound() {
+  currentRoundNumber++;
+  const roundNum = currentRoundNumber;
+
+  try {
+    sendUiUpdate({ status: 'Preparing AI tabs...', roundNumber: roundNum });
+
+    // ── Turn 1: ChatGPT ──
+    // ChatGPT gets the last 3 entries from the conversation log
+    const gptTabId = await getAiTabReady('chatgpt');
     sendUiUpdate({ status: 'Sending to ChatGPT...', currentAgent: 'ChatGPT' });
-    const gptPrompt = `${SYSTEM_INSTRUCTION}\n\nUser Prompt: ${initialPrompt}`;
+
+    const gptContext = formatSlidingContext(getLastNEntries(3));
+    const gptPrompt = `${customSystemInstruction}${gptContext}\n\n${customTurnPrompt}`;
+
     const gptResponse = await sendPromptWithTabSwitch(gptTabId, gptPrompt, 'ChatGPT');
     console.log('[ChatGPT] Response:', gptResponse);
     sendUiUpdate({ status: 'ChatGPT finished.', currentAgent: 'ChatGPT', text: gptResponse.text });
 
-    // Turn 2: Claude
+    conversationLog.push({ agent: 'ChatGPT', text: gptResponse.text, round: roundNum });
+
+    // ── Turn 2: Claude ──
+    // Claude gets the last 3 entries (which now includes ChatGPT's response)
+    const claudeTabId = await getAiTabReady('claude');
+    sendUiUpdate({ status: 'Sending to Claude...', currentAgent: 'Claude' });
+
+    const claudeContext = formatSlidingContext(getLastNEntries(3));
+    const claudePrompt = `${customSystemInstruction}${claudeContext}\n\n${customTurnPrompt}`;
+
+    let claudeResponseText;
     try {
-      const claudeTabId = await getAiTabReady('claude');
-      sendUiUpdate({ status: 'Sending to Claude...', currentAgent: 'Claude' });
-      const claudePrompt = `${SYSTEM_INSTRUCTION}\n\nThe user asked: "${initialPrompt}"\nChatGPT responded: "${gptResponse.text}"\nWhat is your perspective on this?`;
       const claudeResponse = await sendPromptWithTabSwitch(claudeTabId, claudePrompt, 'Claude');
       console.log('[Claude] Response:', claudeResponse);
       sendUiUpdate({ status: 'Claude finished.', currentAgent: 'Claude', text: claudeResponse.text });
 
-      // Turn 3: Gemini
-      try {
-        const geminiTabId = await getAiTabReady('gemini');
-        sendUiUpdate({ status: 'Sending to Gemini...', currentAgent: 'Gemini' });
-        const geminiPrompt = `${SYSTEM_INSTRUCTION}\n\nUser asked: "${initialPrompt}"\nChatGPT said: "${gptResponse.text}"\nClaude said: "${claudeResponse.text}"\nProvide a final synthesis or concluding thoughts.`;
-        const geminiResponse = await sendPromptWithTabSwitch(geminiTabId, geminiPrompt, 'Gemini');
-        console.log('[Gemini] Response:', geminiResponse);
-        sendUiUpdate({ status: 'Round complete.', currentAgent: 'Gemini', text: geminiResponse.text });
-      } catch (geminiErr) {
-        console.error('Gemini turn error:', geminiErr);
-        sendUiUpdate({ status: `Gemini turn skipped: ${geminiErr.message}`, currentAgent: 'Gemini', text: `(Gemini unavailable: ${geminiErr.message})` });
-      }
+      claudeResponseText = claudeResponse.text;
+      conversationLog.push({ agent: 'Claude', text: claudeResponse.text, round: roundNum });
     } catch (claudeErr) {
       console.error('Claude turn error:', claudeErr);
-      sendUiUpdate({ status: `Claude turn skipped: ${claudeErr.message}`, currentAgent: 'Claude', text: `(Claude unavailable: ${claudeErr.message})` });
+      claudeResponseText = `(Claude unavailable: ${claudeErr.message})`;
+      sendUiUpdate({ status: `Claude turn skipped: ${claudeErr.message}`, currentAgent: 'Claude', text: claudeResponseText });
+      conversationLog.push({ agent: 'Claude', text: claudeResponseText, round: roundNum });
     }
 
-    sendUiUpdate({ status: 'Idle', currentAgent: null });
+    // ── Turn 3: Gemini ──
+    // Gemini gets the last 3 entries (which now includes Claude's response)
+    // Gemini is an EQUAL participant, not just for synthesis
+    const geminiTabId = await getAiTabReady('gemini');
+    sendUiUpdate({ status: 'Sending to Gemini...', currentAgent: 'Gemini' });
+
+    const geminiContext = formatSlidingContext(getLastNEntries(3));
+    const geminiPrompt = `${customSystemInstruction}${geminiContext}\n\n${customTurnPrompt}`;
+
+    try {
+      const geminiResponse = await sendPromptWithTabSwitch(geminiTabId, geminiPrompt, 'Gemini');
+      console.log('[Gemini] Response:', geminiResponse);
+
+      conversationLog.push({ agent: 'Gemini', text: geminiResponse.text, round: roundNum });
+
+      // Final message: round complete with done flag
+      sendUiUpdate({
+        status: `Round ${roundNum} complete.`,
+        currentAgent: 'Gemini',
+        text: geminiResponse.text,
+        roundComplete: true,
+        roundNumber: roundNum,
+        conversationLog: conversationLog,
+        done: true
+      });
+    } catch (geminiErr) {
+      console.error('Gemini turn error:', geminiErr);
+      const errText = `(Gemini unavailable: ${geminiErr.message})`;
+      conversationLog.push({ agent: 'Gemini', text: errText, round: roundNum });
+
+      sendUiUpdate({
+        status: `Gemini turn skipped: ${geminiErr.message}`,
+        currentAgent: 'Gemini',
+        text: errText,
+        roundComplete: true,
+        roundNumber: roundNum,
+        conversationLog: conversationLog,
+        done: true
+      });
+    }
 
   } catch (error) {
     console.error('Broadcast Error:', error);
     let errorMsg = (error && error.message) ? error.message : String(error);
-    sendUiUpdate({ status: `Error: ${errorMsg}`, currentAgent: null });
+    sendUiUpdate({ status: `Error: ${errorMsg}`, currentAgent: null, done: true });
   }
 }
+
+// ─── Message Listener ─────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'START_BROADCAST') {
@@ -203,7 +339,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (sender.tab && sender.tab.id) chatTabId = sender.tab.id;
     handleSingleAgent(request.agent || 'chatgpt', request.prompt);
     sendResponse({ status: 'started' });
+  } else if (request.type === 'CONTINUE_BROADCAST') {
+    handleContinueBroadcast(request.conversationLog, null);
+    sendResponse({ status: 'started' });
+  } else if (request.type === 'CONTINUE_WITH_INPUT') {
+    handleContinueBroadcast(request.conversationLog, request.prompt);
+    sendResponse({ status: 'started' });
   }
   return true;
 });
-
