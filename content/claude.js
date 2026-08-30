@@ -68,8 +68,7 @@
         });
         if (assistantBlocks.length > 0) {
             const last = assistantBlocks[assistantBlocks.length - 1];
-            const text = extractText(last);
-            if (text.length > 0) return text;
+            return extractText(last);
         }
 
         // Strategy 2: font-claude-response-body paragraphs directly
@@ -81,22 +80,20 @@
                                       lastPara.closest('.group') ||
                                       lastPara.parentElement;
             if (responseContainer) {
-                const text = extractText(responseContainer);
-                if (text.length > 0) return text;
+                return extractText(responseContainer);
             }
         }
 
-        // Strategy 3: Broad fallback — prose/markdown blocks not belonging to user
+        // Strategy 3: Broad fallback — last prose/markdown block not belonging to user
         const main = document.querySelector('main') || document.body;
         const proseMsgs = Array.from(main.querySelectorAll(
             '.prose, [class*="prose"], .markdown, div[class*="message-content"]'
         ));
-        for (let i = proseMsgs.length - 1; i >= 0; i--) {
-            const el = proseMsgs[i];
-            if (el.closest('[data-message-author="human"]') || el.closest('.font-user-message')) continue;
-            if (el.closest('[data-cds="UserMessage"]')) continue;
-            const text = extractText(el);
-            if (text.length > 0) return text;
+        if (proseMsgs.length > 0) {
+            const lastEl = proseMsgs[proseMsgs.length - 1];
+            if (!lastEl.closest('[data-message-author="human"]') && !lastEl.closest('.font-user-message') && !lastEl.closest('[data-cds="UserMessage"]')) {
+                return extractText(lastEl);
+            }
         }
 
         return '';
@@ -111,6 +108,7 @@
             '[role="button"], .sr-only, [data-testid*="action"], ' +
             '.action-bar, .feedback-container, fieldset, ' +
             '[data-cds="MessageActions"], [data-cds="RelativeTime"], ' +
+            '[class*="thinking"], [class*="thought"], [data-testid*="thought"], ' +
             'time, [data-reveal]'
         ).forEach(n => n.remove());
 
@@ -120,6 +118,8 @@
 
     function cleanText(raw) {
         if (!raw) return '';
+        const utils = window.AIBridgeUtils;
+        const textToProcess = utils && utils.extractDelimitedText ? utils.extractDelimitedText(raw) : raw;
 
         const junkExact = new Set([
             'Claude is AI and can make mistakes. Please double-check responses.',
@@ -129,12 +129,13 @@
             'Write your prompt to Claude'
         ]);
 
-        const lines = raw.split('\n')
+        const lines = textToProcess.split('\n')
             .map(l => l.trim())
             .filter(l => {
                 if (!l) return false;
                 if (junkExact.has(l)) return false;
                 if (/^<\s*\d+\s*\/\s*\d+\s*>$/.test(l)) return false;
+                if (/^(connecting to|searching|looking up|checking|loading|fetching|browsing|working on|using|calling|thinking|thought|synthesizing)\b/i.test(l)) return false;
                 if (l.startsWith('{function') || l.includes('__oai_')) return false;
                 if (l.includes('[SYSTEM INSTRUCTION')) return false;
                 if (l.startsWith('The user asked:') || l.startsWith('ChatGPT responded:')) return false;
@@ -144,6 +145,15 @@
             });
 
         return lines.join('\n').trim();
+    }
+
+    function isIntermediaryText(text) {
+        if (!text || text.trim().length === 0) return true;
+        const trimmed = text.trim();
+        if (/^(connecting to|searching|looking up|checking|loading|fetching|browsing|working on|using|calling|thinking|thought|synthesizing)\b/i.test(trimmed)) {
+            return true;
+        }
+        return false;
     }
 
     // ─── Generating Detection ─────────────────────────────────────────
@@ -216,11 +226,13 @@
 
                 const turnCountNow = getAssistantTurnCount();
                 const currentText = getLatestAssistantText();
+                const isIntermediary = isIntermediaryText(currentText);
 
                 const isNew = (
-                    currentText.length > 0 &&
+                    !isIntermediary &&
+                    currentText.length >= 10 &&
                     currentText !== promptText.trim() &&
-                    (turnCountNow > turnCountBefore || currentText !== textBefore)
+                    currentText !== textBefore
                 );
 
                 console.log('[Claude Poll]', {
@@ -243,14 +255,14 @@
                     }
 
                     // Done when: not generating and text is stable for 2 consecutive polls
-                    if (!generating && stableCount >= 2) {
+                    if (sawGenerating && !generating && stableCount >= 2) {
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
 
-                    // Or when: not generating, stable for 1 poll, and > 2s elapsed
-                    if (!generating && stableCount >= 1 && elapsed > 2000) {
+                    // Or when: not generating, stable for 2 polls, and > 1.5s elapsed
+                    if (!generating && stableCount >= 2 && elapsed > 1500) {
                         clearInterval(poll);
                         resolve(currentText);
                         return;
@@ -258,7 +270,7 @@
 
                     // Safety finish: text stable for 4 polls, response is substantial
                     if (stableCount >= 4 && currentText.length > 30 && elapsed > 2000) {
-                        console.log('[Claude Poll] Text stable for 4 consecutive polls, resolving early.');
+                        console.log('[Claude Poll] Text stable for 4 consecutive polls, resolving.');
                         clearInterval(poll);
                         resolve(currentText);
                         return;
@@ -268,8 +280,13 @@
                 // Safety timeout
                 if (elapsed >= timeoutMs) {
                     clearInterval(poll);
-                    const fallback = (lastText && lastText !== promptText.trim()) ? lastText : currentText;
-                    resolve(fallback || 'Error: Claude generation timed out.');
+                    if (lastText && lastText !== textBefore && lastText !== promptText.trim()) {
+                        resolve(lastText);
+                    } else if (currentText && currentText !== textBefore && currentText !== promptText.trim()) {
+                        resolve(currentText);
+                    } else {
+                        resolve('Error: Claude generation timed out.');
+                    }
                 }
             }, 400);
         });

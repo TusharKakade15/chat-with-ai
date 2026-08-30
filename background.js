@@ -6,27 +6,165 @@ let chatTabId = null;
 let conversationLog = [];
 let currentRoundNumber = 0;
 
-const DEFAULT_SYSTEM_INSTRUCTION = `[SYSTEM INSTRUCTION: You are participating in a multi-AI roundtable discussion with other AI models. Keep your response concise, conversational, and direct (under 150 words). Do not output massive blocks of text. Acknowledge points made by others if provided, and build upon them or critique them briefly.]`;
-const DEFAULT_TURN_PROMPT = `What is your perspective? Respond conversationally.`;
+const PERSONAS = {
+  user: {
+    name: 'You',
+    title: '',
+    displayName: 'You'
+  },
+  chatgpt: {
+    key: 'chatgpt',
+    service: 'ChatGPT',
+    name: 'Alex',
+    title: '',
+    displayName: 'Alex',
+    rolePrompt: 'You are an expert analyst. Your tone is direct, objective, and highly structured. Prioritize actionable insights and avoid conversational filler.'
+  },
+  claude: {
+    key: 'claude',
+    service: 'Claude',
+    name: 'Morgan',
+    title: '',
+    displayName: 'Morgan',
+    rolePrompt: 'You are a seasoned editor and creative collaborator. Your responses should be nuanced, empathetic, and elegantly phrased. Focus on narrative flow and conceptual depth.'
+  },
+  gemini: {
+    key: 'gemini',
+    service: 'Gemini',
+    name: 'Jordan',
+    title: '',
+    displayName: 'Jordan',
+    rolePrompt: 'You are a comprehensive researcher. Pull from diverse disciplines, connect disparate concepts, and present information with clear citations and expansive context.'
+  }
+};
 
-let customSystemInstruction = DEFAULT_SYSTEM_INSTRUCTION;
+const DEFAULT_TURN_PROMPT = `Now respond.`;
+const DEFAULT_MAX_CHARACTERS = 500;
+
+let customMaxCharacters = DEFAULT_MAX_CHARACTERS;
 let customTurnPrompt = DEFAULT_TURN_PROMPT;
 
-// Load stored custom prompts if present
-if (chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get(['systemInstruction', 'turnPrompt'], (res) => {
-    if (res.systemInstruction) customSystemInstruction = res.systemInstruction;
-    if (res.turnPrompt) customTurnPrompt = res.turnPrompt;
-  });
+function applyCustomPersonas(custom) {
+  if (!custom) return;
+  if (custom.user) {
+    if (custom.user.name) PERSONAS.user.name = custom.user.name.replace(/\s*\([^)]*\)/g, '').trim() || 'You';
+    PERSONAS.user.title = (custom.user.role || custom.user.title || '').replace(/\s*\([^)]*\)/g, '').trim();
+    PERSONAS.user.displayName = PERSONAS.user.name;
+  }
+  if (custom.chatgpt || custom.ChatGPT) {
+    const src = custom.chatgpt || custom.ChatGPT;
+    if (src.name) PERSONAS.chatgpt.name = src.name.replace(/\s*\([^)]*\)/g, '').trim() || 'Alex';
+    PERSONAS.chatgpt.title = '';
+    PERSONAS.chatgpt.displayName = PERSONAS.chatgpt.name;
+    if (src.rolePrompt !== undefined) {
+      PERSONAS.chatgpt.rolePrompt = src.rolePrompt;
+    }
+  }
+  if (custom.claude || custom.Claude) {
+    const src = custom.claude || custom.Claude;
+    if (src.name) PERSONAS.claude.name = src.name.replace(/\s*\([^)]*\)/g, '').trim() || 'Morgan';
+    PERSONAS.claude.title = '';
+    PERSONAS.claude.displayName = PERSONAS.claude.name;
+    if (src.rolePrompt !== undefined) {
+      PERSONAS.claude.rolePrompt = src.rolePrompt;
+    }
+  }
+  if (custom.gemini || custom.Gemini) {
+    const src = custom.gemini || custom.Gemini;
+    if (src.name) PERSONAS.gemini.name = src.name.replace(/\s*\([^)]*\)/g, '').trim() || 'Jordan';
+    PERSONAS.gemini.title = '';
+    PERSONAS.gemini.displayName = PERSONAS.gemini.name;
+    if (src.rolePrompt !== undefined) {
+      PERSONAS.gemini.rolePrompt = src.rolePrompt;
+    }
+  }
+  console.log('[AIBridge] Personas updated (parameter-friendly, no role suffixes):', JSON.stringify(PERSONAS, null, 2));
+}
 
-  // Listen for real-time storage updates
+let enabledAgents = { chatgpt: true, claude: true, gemini: true };
+
+const DEFAULT_RULES = `1. Contribute concisely from your designated perspective (under {limit} characters).
+2. Jump straight into your analysis without generic introductions or conversational filler.
+3. Address colleagues by name when building upon, questioning, or critiquing their points.
+4. Wrap your exact response between [MESSAGE] and [/MESSAGE] tags.`;
+
+let customRules = DEFAULT_RULES;
+
+async function ensureSettingsLoaded() {
+  return new Promise((resolve) => {
+    if (!chrome.storage || !chrome.storage.local) return resolve();
+    chrome.storage.local.get(['maxCharacters', 'turnPrompt', 'custom_personas', 'custom_rules', 'chat_conversation_log', 'chat_last_round', 'enabled_agents'], (res) => {
+      if (res.maxCharacters) customMaxCharacters = res.maxCharacters;
+      if (res.turnPrompt) customTurnPrompt = res.turnPrompt;
+      if (res.custom_personas) applyCustomPersonas(res.custom_personas);
+      if (res.custom_rules) customRules = res.custom_rules;
+      if (res.enabled_agents) enabledAgents = { ...enabledAgents, ...res.enabled_agents };
+      if (res.chat_conversation_log && Array.isArray(res.chat_conversation_log)) {
+        conversationLog = res.chat_conversation_log;
+      }
+      if (res.chat_last_round !== undefined) {
+        currentRoundNumber = res.chat_last_round;
+      }
+      resolve();
+    });
+  });
+}
+
+// Initial load on startup
+ensureSettingsLoaded();
+
+// Listen for real-time storage updates
+if (chrome.storage && chrome.storage.onChanged) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local') {
-      if (changes.systemInstruction) customSystemInstruction = changes.systemInstruction.newValue || DEFAULT_SYSTEM_INSTRUCTION;
+      if (changes.maxCharacters) customMaxCharacters = changes.maxCharacters.newValue || DEFAULT_MAX_CHARACTERS;
       if (changes.turnPrompt) customTurnPrompt = changes.turnPrompt.newValue || DEFAULT_TURN_PROMPT;
+      if (changes.custom_personas) applyCustomPersonas(changes.custom_personas.newValue);
+      if (changes.custom_rules) customRules = changes.custom_rules.newValue || DEFAULT_RULES;
+      if (changes.enabled_agents) enabledAgents = { ...enabledAgents, ...changes.enabled_agents.newValue };
+      if (changes.chat_conversation_log) conversationLog = changes.chat_conversation_log.newValue || [];
+      if (changes.chat_last_round !== undefined) currentRoundNumber = changes.chat_last_round.newValue || 0;
     }
   });
 }
+
+function saveConversationState() {
+  if (chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({
+      chat_conversation_log: conversationLog,
+      chat_last_round: currentRoundNumber
+    });
+  }
+}
+
+function getRolePrompt(agentKey) {
+  const p = PERSONAS[agentKey];
+  if (!p) return '';
+  const limit = customMaxCharacters || DEFAULT_MAX_CHARACTERS;
+  const cleanName = (p.name || agentKey).replace(/\s*\([^)]*\)/g, '').trim();
+  
+  let personaIdentity = '';
+  if (p.rolePrompt && p.rolePrompt.trim()) {
+    personaIdentity = `You are contributing as ${cleanName}. ${p.rolePrompt.trim()} We are in a roundtable discussion with your colleagues.`;
+  } else {
+    personaIdentity = `You are contributing as ${cleanName}. We are in a roundtable discussion with your colleagues.`;
+  }
+
+  let rulesText = (customRules && customRules.trim()) ? customRules.trim() : DEFAULT_RULES;
+  rulesText = rulesText.replace(/\{name\}/gi, cleanName).replace(/\{limit\}/gi, limit);
+
+  return `[Discussion Context: ${personaIdentity}
+Guidelines:
+${rulesText}]`;
+}
+
+function cleanMessageTags(raw) {
+  if (!raw) return '';
+  const match = raw.match(/\[MESSAGE\]([\s\S]*?)\[\/MESSAGE\]/i);
+  if (match && match[1].trim()) return match[1].trim();
+  return raw.replace(/\[MESSAGE\]/gi, '').replace(/\[\/MESSAGE\]/gi, '').trim();
+}
+
 
 const AI_CONFIG = {
   chatgpt: { searchPrefix: 'https://chatgpt.com', newChatUrl: 'https://chatgpt.com/' },
@@ -158,42 +296,130 @@ async function sendPromptWithTabSwitch(tabId, prompt, agentName) {
   return await sendPromptToTab(tabId, prompt);
 }
 
-// ─── Sliding Window Context ──────────────────────────────────────────
-// Each AI gets only the last 3 entries from the conversation log.
-// This keeps prompts short and avoids sending the whole history repeatedly.
+// ─── Dynamic Agent Context ──────────────────────────────────────────
+// Returns all conversation entries that occurred AFTER this agent's previous response,
+// so the agent gets the complete intervening discussion as context.
 
-function getLastNEntries(n) {
-  return conversationLog.slice(-n);
+function getContextForAgent(agentKey) {
+  if (!conversationLog || conversationLog.length === 0) return '';
+
+  const normalizedKey = agentKey.toLowerCase();
+  
+  // Find the index of this agent's most recent turn in conversationLog
+  let lastIndex = -1;
+  for (let i = conversationLog.length - 1; i >= 0; i--) {
+    const entryKey = (conversationLog[i].aiKey || conversationLog[i].agent || '').toLowerCase();
+    if (entryKey === normalizedKey || (normalizedKey === 'chatgpt' && entryKey.includes('gpt'))) {
+      lastIndex = i;
+      break;
+    }
+  }
+
+  let relevantEntries = [];
+  if (lastIndex === -1) {
+    // This AI hasn't spoken yet in this thread; provide all recent turns (up to 6)
+    relevantEntries = conversationLog.slice(-6);
+  } else {
+    // All entries that occurred AFTER this AI's last turn
+    relevantEntries = conversationLog.slice(lastIndex + 1);
+    // If there are very few entries, pull extra context from BEFORE this AI's last turn
+    // (but never include the agent's own response — start from lastIndex-1 down to max 2 prior entries)
+    if (relevantEntries.length < 2 && lastIndex > 0) {
+      const priorStart = Math.max(0, lastIndex - 2);
+      const priorEntries = conversationLog.slice(priorStart, lastIndex);
+      relevantEntries = [...priorEntries, ...relevantEntries];
+    }
+    // Cap at last 8 entries to stay concise
+    if (relevantEntries.length > 8) {
+      relevantEntries = relevantEntries.slice(-8);
+    }
+  }
+
+  return formatSlidingContext(relevantEntries);
+}
+
+function detectTaggedAgents(promptText) {
+  if (!promptText) return [];
+  const text = promptText.toLowerCase();
+  const tagged = [];
+
+  const gptName = (PERSONAS.chatgpt && PERSONAS.chatgpt.name ? PERSONAS.chatgpt.name.toLowerCase() : 'alex');
+  const claudeName = (PERSONAS.claude && PERSONAS.claude.name ? PERSONAS.claude.name.toLowerCase() : 'morgan');
+  const geminiName = (PERSONAS.gemini && PERSONAS.gemini.name ? PERSONAS.gemini.name.toLowerCase() : 'jordan');
+
+  // Word-boundary match to avoid false positives (e.g. @al matching @alex)
+  function hasTag(name) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('(?:^|\\s)@' + escaped + '(?:\\s|$|[,;.!?])', 'i').test(text);
+  }
+
+  const hasGpt = hasTag('chatgpt') || hasTag('gpt') || hasTag(gptName);
+  const hasClaude = hasTag('claude') || hasTag(claudeName);
+  const hasGemini = hasTag('gemini') || hasTag(geminiName);
+
+  if (hasGpt && (!enabledAgents || enabledAgents.chatgpt !== false)) tagged.push('chatgpt');
+  if (hasClaude && (!enabledAgents || enabledAgents.claude !== false)) tagged.push('claude');
+  if (hasGemini && (!enabledAgents || enabledAgents.gemini !== false)) tagged.push('gemini');
+
+  return tagged;
 }
 
 function formatSlidingContext(entries) {
-  if (entries.length === 0) return '';
+  if (!entries || entries.length === 0) return '';
 
-  let formatted = '\n\nRecent conversation:';
+  let formatted = '\n\nRecent team discussion:';
   for (const entry of entries) {
-    formatted += `\n- ${entry.agent}: "${entry.text}"`;
+    let sender = '';
+    const key = (entry.aiKey || entry.agent || '').toLowerCase();
+    if (key === 'user') {
+      sender = (PERSONAS.user && PERSONAS.user.name) ? PERSONAS.user.name : 'You';
+    } else if (key === 'chatgpt' || key.includes('gpt')) {
+      sender = (PERSONAS.chatgpt && PERSONAS.chatgpt.name) ? PERSONAS.chatgpt.name : 'Alex';
+    } else if (key === 'claude') {
+      sender = (PERSONAS.claude && PERSONAS.claude.name) ? PERSONAS.claude.name : 'Morgan';
+    } else if (key === 'gemini') {
+      sender = (PERSONAS.gemini && PERSONAS.gemini.name) ? PERSONAS.gemini.name : 'Jordan';
+    } else {
+      sender = entry.personaName || entry.displayName || entry.agent || 'Colleague';
+    }
+    // Strip any residual "(role)" or parenthesized suffixes from sender
+    sender = sender.replace(/\s*\([^)]*\)/g, '').trim();
+    formatted += `\n- ${sender}: "${entry.text}"`;
   }
   return formatted;
 }
 
 // ─── Single Agent Mode ────────────────────────────────────────────────
 
-async function handleSingleAgent(agentKey, prompt) {
+async function handleSingleAgent(agentKey, prompt, customPersonas = null, maxCharacters = null) {
+  await ensureSettingsLoaded();
+  if (customPersonas) applyCustomPersonas(customPersonas);
+  if (maxCharacters) customMaxCharacters = maxCharacters;
+
   try {
+    const persona = PERSONAS[agentKey] || { name: agentKey, title: 'AI Assistant', displayName: agentKey };
     const agentName = agentKey === 'chatgpt' ? 'ChatGPT' : (agentKey === 'claude' ? 'Claude' : 'Gemini');
-    sendUiUpdate({ status: `Connecting to ${agentName}...`, currentAgent: agentName });
+    sendUiUpdate({ status: `Connecting to ${persona.displayName || persona.name}...`, currentAgent: agentName });
     
     const tabId = await getAiTabReady(agentKey);
-    sendUiUpdate({ status: `Sending prompt to ${agentName}...`, currentAgent: agentName });
+    sendUiUpdate({ status: `Sending prompt to ${persona.name}...`, currentAgent: agentName });
     
-    const response = await sendPromptWithTabSwitch(tabId, prompt, agentName);
-    console.log(`[${agentName}] Response received:`, response);
+    const rolePrompt = getRolePrompt(agentKey);
+    const singlePrompt = rolePrompt ? `${rolePrompt}\n\nTask:\n${prompt}\n\n${customTurnPrompt}` : prompt;
+    console.log(`[AIBridge] Sending prompt to ${agentName} (${persona.name}):\n${singlePrompt}`);
+    
+    const response = await sendPromptWithTabSwitch(tabId, singlePrompt, agentName);
+    const cleanText = cleanMessageTags(response.text);
+    console.log(`[${agentName}/${persona.name}] Response received:`, cleanText);
     
     // Send final response with done flag — textfield re-enables immediately
     sendUiUpdate({ 
-      status: `${agentName} responded.`, 
+      status: `${persona.displayName || persona.name} responded.`, 
       currentAgent: agentName, 
-      text: response.text,
+      personaName: persona.name,
+      personaTitle: persona.title,
+      displayName: persona.displayName,
+      text: cleanText,
       done: true
     });
   } catch (error) {
@@ -203,20 +429,40 @@ async function handleSingleAgent(agentKey, prompt) {
   }
 }
 
-// ─── Broadcast Mode (Roundtable) ──────────────────────────────────────
+// ─── Broadcast Mode (Roundtable & Tagged Execution) ────────────────────
 
-async function handleBroadcast(initialPrompt) {
+async function handleBroadcast(initialPrompt, customPersonas = null, maxCharacters = null, explicitTaggedAgents = null, customEnabledAgents = null) {
+  await ensureSettingsLoaded();
+  if (customPersonas) applyCustomPersonas(customPersonas);
+  if (maxCharacters) customMaxCharacters = maxCharacters;
+  if (customEnabledAgents) enabledAgents = { ...enabledAgents, ...customEnabledAgents };
+
   // Reset for a fresh broadcast
   conversationLog = [];
   currentRoundNumber = 0;
 
-  // Add the user's prompt to the log
-  conversationLog.push({ agent: 'User', text: initialPrompt.trim() });
+  // Add the user's prompt to the log with dynamic user persona
+  conversationLog.push({
+    agent: 'User',
+    personaName: PERSONAS.user.name,
+    personaTitle: PERSONAS.user.title,
+    displayName: PERSONAS.user.displayName,
+    text: initialPrompt.trim()
+  });
 
-  await executeRound();
+  const tagged = (explicitTaggedAgents && explicitTaggedAgents.length > 0) 
+    ? explicitTaggedAgents 
+    : detectTaggedAgents(initialPrompt);
+
+  await executeRound(tagged.length > 0 ? tagged : null);
 }
 
-async function handleContinueBroadcast(log, userInput) {
+async function handleContinueBroadcast(log, userInput, customPersonas = null, maxCharacters = null, explicitTaggedAgents = null, customEnabledAgents = null) {
+  await ensureSettingsLoaded();
+  if (customPersonas) applyCustomPersonas(customPersonas);
+  if (maxCharacters) customMaxCharacters = maxCharacters;
+  if (customEnabledAgents) enabledAgents = { ...enabledAgents, ...customEnabledAgents };
+
   // Restore log from the Side Panel's copy
   conversationLog = log || [];
 
@@ -227,98 +473,117 @@ async function handleContinueBroadcast(log, userInput) {
   }
 
   // Always add a user entry between rounds so the sliding window includes it
-  if (userInput && userInput.trim()) {
-    conversationLog.push({ agent: 'User', text: userInput.trim() });
-  } else {
-    conversationLog.push({ agent: 'User', text: 'Continue the discussion.' });
-  }
+  const userText = (userInput && userInput.trim()) ? userInput.trim() : 'Continue the discussion with concrete next steps.';
+  conversationLog.push({
+    agent: 'User',
+    personaName: PERSONAS.user.name,
+    personaTitle: PERSONAS.user.title,
+    displayName: PERSONAS.user.displayName,
+    text: userText
+  });
 
-  await executeRound();
+  const tagged = (explicitTaggedAgents && explicitTaggedAgents.length > 0) 
+    ? explicitTaggedAgents 
+    : detectTaggedAgents(userText);
+
+  await executeRound(tagged.length > 0 ? tagged : null);
 }
 
-async function executeRound() {
+async function executeRound(explicitTaggedAgents = null) {
   currentRoundNumber++;
   const roundNum = currentRoundNumber;
 
-  try {
-    sendUiUpdate({ status: 'Preparing AI tabs...', roundNumber: roundNum });
+  let activePool = ['chatgpt', 'claude', 'gemini'].filter(k => (!enabledAgents || enabledAgents[k] !== false));
+  if (activePool.length === 0) {
+    activePool = ['chatgpt'];
+  }
 
-    // ── Turn 1: ChatGPT ──
-    // ChatGPT gets the last 3 entries from the conversation log
-    const gptTabId = await getAiTabReady('chatgpt');
-    sendUiUpdate({ status: 'Sending to ChatGPT...', currentAgent: 'ChatGPT' });
-
-    const gptContext = formatSlidingContext(getLastNEntries(3));
-    const gptPrompt = `${customSystemInstruction}${gptContext}\n\n${customTurnPrompt}`;
-
-    const gptResponse = await sendPromptWithTabSwitch(gptTabId, gptPrompt, 'ChatGPT');
-    console.log('[ChatGPT] Response:', gptResponse);
-    sendUiUpdate({ status: 'ChatGPT finished.', currentAgent: 'ChatGPT', text: gptResponse.text });
-
-    conversationLog.push({ agent: 'ChatGPT', text: gptResponse.text, round: roundNum });
-
-    // ── Turn 2: Claude ──
-    // Claude gets the last 3 entries (which now includes ChatGPT's response)
-    const claudeTabId = await getAiTabReady('claude');
-    sendUiUpdate({ status: 'Sending to Claude...', currentAgent: 'Claude' });
-
-    const claudeContext = formatSlidingContext(getLastNEntries(3));
-    const claudePrompt = `${customSystemInstruction}${claudeContext}\n\n${customTurnPrompt}`;
-
-    let claudeResponseText;
-    try {
-      const claudeResponse = await sendPromptWithTabSwitch(claudeTabId, claudePrompt, 'Claude');
-      console.log('[Claude] Response:', claudeResponse);
-      sendUiUpdate({ status: 'Claude finished.', currentAgent: 'Claude', text: claudeResponse.text });
-
-      claudeResponseText = claudeResponse.text;
-      conversationLog.push({ agent: 'Claude', text: claudeResponse.text, round: roundNum });
-    } catch (claudeErr) {
-      console.error('Claude turn error:', claudeErr);
-      claudeResponseText = `(Claude unavailable: ${claudeErr.message})`;
-      sendUiUpdate({ status: `Claude turn skipped: ${claudeErr.message}`, currentAgent: 'Claude', text: claudeResponseText });
-      conversationLog.push({ agent: 'Claude', text: claudeResponseText, round: roundNum });
+  let agentsToRun = activePool;
+  if (explicitTaggedAgents && explicitTaggedAgents.length > 0) {
+    const filteredTagged = explicitTaggedAgents.filter(k => (!enabledAgents || enabledAgents[k] !== false));
+    if (filteredTagged.length > 0) {
+      agentsToRun = filteredTagged;
     }
+  }
 
-    // ── Turn 3: Gemini ──
-    // Gemini gets the last 3 entries (which now includes Claude's response)
-    // Gemini is an EQUAL participant, not just for synthesis
-    const geminiTabId = await getAiTabReady('gemini');
-    sendUiUpdate({ status: 'Sending to Gemini...', currentAgent: 'Gemini' });
+  try {
+    const targetNames = agentsToRun.map(k => (PERSONAS[k] ? PERSONAS[k].name : k)).join(', ');
+    sendUiUpdate({ status: `Consulting ${targetNames}...`, roundNumber: roundNum });
 
-    const geminiContext = formatSlidingContext(getLastNEntries(3));
-    const geminiPrompt = `${customSystemInstruction}${geminiContext}\n\n${customTurnPrompt}`;
-
-    try {
-      const geminiResponse = await sendPromptWithTabSwitch(geminiTabId, geminiPrompt, 'Gemini');
-      console.log('[Gemini] Response:', geminiResponse);
-
-      conversationLog.push({ agent: 'Gemini', text: geminiResponse.text, round: roundNum });
-
-      // Final message: round complete with done flag
-      sendUiUpdate({
-        status: `Round ${roundNum} complete.`,
-        currentAgent: 'Gemini',
-        text: geminiResponse.text,
-        roundComplete: true,
-        roundNumber: roundNum,
-        conversationLog: conversationLog,
-        done: true
-      });
-    } catch (geminiErr) {
-      console.error('Gemini turn error:', geminiErr);
-      const errText = `(Gemini unavailable: ${geminiErr.message})`;
-      conversationLog.push({ agent: 'Gemini', text: errText, round: roundNum });
+    for (let idx = 0; idx < agentsToRun.length; idx++) {
+      const agentKey = agentsToRun[idx];
+      const isLastAgent = (idx === agentsToRun.length - 1);
+      const persona = PERSONAS[agentKey] || { name: agentKey, title: 'AI Assistant', displayName: agentKey };
+      const agentName = agentKey === 'chatgpt' ? 'ChatGPT' : (agentKey === 'claude' ? 'Claude' : 'Gemini');
 
       sendUiUpdate({
-        status: `Gemini turn skipped: ${geminiErr.message}`,
-        currentAgent: 'Gemini',
-        text: errText,
-        roundComplete: true,
-        roundNumber: roundNum,
-        conversationLog: conversationLog,
-        done: true
+        status: `Consulting ${persona.displayName || persona.name}...`,
+        currentAgent: agentName,
+        personaName: persona.name,
+        personaTitle: persona.title
       });
+
+      try {
+        const tabId = await getAiTabReady(agentKey);
+        const agentContext = getContextForAgent(agentKey);
+        const prompt = `${getRolePrompt(agentKey)}${agentContext}\n\n${customTurnPrompt}`;
+        console.log(`[AIBridge] Injected ${agentName} (${persona.name}) prompt:\n${prompt}`);
+
+        const response = await sendPromptWithTabSwitch(tabId, prompt, agentName);
+        const cleanText = cleanMessageTags(response.text);
+        console.log(`[${agentName}/${persona.name}] Response:`, cleanText);
+
+        conversationLog.push({
+          agent: agentName,
+          aiKey: agentKey,
+          personaName: persona.name,
+          personaTitle: persona.title,
+          displayName: persona.displayName,
+          text: cleanText,
+          round: roundNum
+        });
+        saveConversationState();
+
+        sendUiUpdate({
+          status: isLastAgent ? (agentsToRun.length > 1 ? `Round ${roundNum} complete.` : `${persona.name} responded.`) : `${persona.displayName || persona.name} responded.`,
+          currentAgent: agentName,
+          personaName: persona.name,
+          personaTitle: persona.title,
+          displayName: persona.displayName,
+          text: cleanText,
+          roundComplete: isLastAgent,
+          roundNumber: roundNum,
+          conversationLog: conversationLog,
+          done: isLastAgent
+        });
+      } catch (agentErr) {
+        console.error(`${agentName} turn error:`, agentErr);
+        const errText = `(${persona.displayName || persona.name} unavailable: ${agentErr.message})`;
+        
+        conversationLog.push({
+          agent: agentName,
+          aiKey: agentKey,
+          personaName: persona.name,
+          personaTitle: persona.title,
+          displayName: persona.displayName,
+          text: errText,
+          round: roundNum
+        });
+        saveConversationState();
+
+        sendUiUpdate({
+          status: `${persona.name} skipped: ${agentErr.message}`,
+          currentAgent: agentName,
+          personaName: persona.name,
+          personaTitle: persona.title,
+          displayName: persona.displayName,
+          text: errText,
+          roundComplete: isLastAgent,
+          roundNumber: roundNum,
+          conversationLog: conversationLog,
+          done: isLastAgent
+        });
+      }
     }
 
   } catch (error) {
@@ -333,18 +598,43 @@ async function executeRound() {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'START_BROADCAST') {
     if (sender.tab && sender.tab.id) chatTabId = sender.tab.id;
-    handleBroadcast(request.prompt);
+    if (request.customRules) customRules = request.customRules;
+    handleBroadcast(request.prompt, request.customPersonas, request.maxCharacters, request.taggedAgents, request.enabledAgents);
     sendResponse({ status: 'started' });
   } else if (request.type === 'START_SINGLE_AGENT') {
     if (sender.tab && sender.tab.id) chatTabId = sender.tab.id;
-    handleSingleAgent(request.agent || 'chatgpt', request.prompt);
+    if (request.customRules) customRules = request.customRules;
+    handleSingleAgent(request.agent || 'chatgpt', request.prompt, request.customPersonas, request.maxCharacters);
     sendResponse({ status: 'started' });
   } else if (request.type === 'CONTINUE_BROADCAST') {
-    handleContinueBroadcast(request.conversationLog, null);
+    if (request.customRules) customRules = request.customRules;
+    handleContinueBroadcast(request.conversationLog, null, request.customPersonas, request.maxCharacters, request.taggedAgents, request.enabledAgents);
     sendResponse({ status: 'started' });
   } else if (request.type === 'CONTINUE_WITH_INPUT') {
-    handleContinueBroadcast(request.conversationLog, request.prompt);
+    if (request.customRules) customRules = request.customRules;
+    handleContinueBroadcast(request.conversationLog, request.prompt, request.customPersonas, request.maxCharacters, request.taggedAgents, request.enabledAgents);
     sendResponse({ status: 'started' });
+  } else if (request.type === 'UPDATE_PERSONAS') {
+    if (request.customPersonas) applyCustomPersonas(request.customPersonas);
+    if (request.maxCharacters) customMaxCharacters = request.maxCharacters;
+    if (request.customRules) customRules = request.customRules;
+    sendResponse({ status: 'updated' });
+  } else if (request.type === 'UPDATE_ENABLED_AGENTS') {
+    if (request.enabledAgents) enabledAgents = { ...enabledAgents, ...request.enabledAgents };
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ enabled_agents: enabledAgents });
+    }
+    sendResponse({ status: 'updated' });
+  } else if (request.type === 'CLEAR_HISTORY') {
+    conversationLog = [];
+    currentRoundNumber = 0;
+    saveConversationState();
+    sendResponse({ status: 'cleared' });
+  } else if (request.type === 'SYNC_THREAD') {
+    conversationLog = request.conversationLog || [];
+    currentRoundNumber = request.roundNumber || 0;
+    saveConversationState();
+    sendResponse({ status: 'synced' });
   }
   return true;
 });

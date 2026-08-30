@@ -47,30 +47,29 @@
         const assistantEls = Array.from(main.querySelectorAll('[data-message-author-role="assistant"]'));
         if (assistantEls.length > 0) {
             const last = assistantEls[assistantEls.length - 1];
-            const text = extractText(last);
-            if (text.length > 0) return text;
+            return extractText(last);
         }
 
-        // Strategy 2: Find conversation turns, walk backwards to find non-user turn
+        // Strategy 2: Check the last conversation turn (do not walk backwards to older turns)
         const turns = Array.from(document.querySelectorAll(
             '[data-testid^="conversation-turn-"], article'
         ));
-        for (let i = turns.length - 1; i >= 0; i--) {
-            const turn = turns[i];
-            // Skip user turns
-            if (turn.querySelector('[data-message-author-role="user"]')) continue;
-            if (turn.querySelector('button[aria-label*="Edit"]')) continue;
-            const text = extractText(turn);
-            if (text.length > 0) return text;
+        if (turns.length > 0) {
+            const lastTurn = turns[turns.length - 1];
+            const isUser = lastTurn.querySelector('[data-message-author-role="user"]') || lastTurn.querySelector('button[aria-label*="Edit"]');
+            if (!isUser) {
+                return extractText(lastTurn);
+            }
         }
 
-        // Strategy 3: Find .markdown or .prose containers
+        // Strategy 3: Find .markdown or .prose in the last turn
         const markdowns = Array.from(main.querySelectorAll('.markdown, .prose, [class*="markdown"]'));
-        for (let i = markdowns.length - 1; i >= 0; i--) {
-            const parent = markdowns[i].closest('[data-testid^="conversation-turn-"]') || markdowns[i].closest('article');
-            if (parent && parent.querySelector('[data-message-author-role="user"]')) continue;
-            const text = extractText(markdowns[i]);
-            if (text.length > 0) return text;
+        if (markdowns.length > 0) {
+            const lastMarkdown = markdowns[markdowns.length - 1];
+            const parent = lastMarkdown.closest('[data-testid^="conversation-turn-"]') || lastMarkdown.closest('article');
+            if (!parent || !parent.querySelector('[data-message-author-role="user"]')) {
+                return extractText(lastMarkdown);
+            }
         }
 
         return '';
@@ -83,7 +82,8 @@
         clone.querySelectorAll(
             'script, style, noscript, template, button, nav, svg, ' +
             '[role="button"], .sr-only, [data-testid*="action"], ' +
-            '[class*="gizmo"], [class*="action-bar"]'
+            '[class*="gizmo"], [class*="action-bar"], [class*="thinking"], ' +
+            '[class*="thought"], [data-testid*="thought"], [data-testid*="search"]'
         ).forEach(n => n.remove());
 
         // Find the content container
@@ -99,6 +99,9 @@
 
     function cleanText(raw) {
         if (!raw) return '';
+        const utils = window.AIBridgeUtils;
+        const textToProcess = utils && utils.extractDelimitedText ? utils.extractDelimitedText(raw) : raw;
+
         const junk = new Set([
             'ChatGPT can make mistakes. Check important info.',
             'ChatGPT can make mistakes. Verify important info.',
@@ -110,11 +113,12 @@
             'Copy code', 'Memory updated'
         ]);
 
-        return raw.split('\n')
+        return textToProcess.split('\n')
             .map(l => l.trim())
             .filter(l => {
                 if (!l) return false;
                 if (junk.has(l)) return false;
+                if (/^(connecting to|searching|looking up|checking|loading|fetching|browsing|working on|using|calling|thinking|thought|synthesizing)\b/i.test(l)) return false;
                 if (l.startsWith('{function') || l.includes('__oai_')) return false;
                 if (l.includes('[SYSTEM INSTRUCTION')) return false;
                 if (l.startsWith('ChatGPT said:') || l.startsWith('You said:')) return false;
@@ -122,6 +126,15 @@
             })
             .join('\n')
             .trim();
+    }
+
+    function isIntermediaryText(text) {
+        if (!text || text.trim().length === 0) return true;
+        const trimmed = text.trim();
+        if (/^(connecting to|searching|looking up|checking|loading|fetching|browsing|working on|using|calling|thinking|thought|synthesizing)\b/i.test(trimmed)) {
+            return true;
+        }
+        return false;
     }
 
     // ─── Prompt Injection ──────────────────────────────────────────────
@@ -187,12 +200,15 @@
 
                 const turnCountNow = getAssistantTurnCount();
                 const currentText = getLatestAssistantText();
+                const isIntermediary = isIntermediaryText(currentText);
 
-                // Is this genuinely new content?
+                // Has ChatGPT produced genuine NEW text for this turn?
+                // MUST NOT match previous turn's text or the prompt or intermediate status!
                 const isNew = (
-                    currentText.length > 0 &&
+                    !isIntermediary &&
+                    currentText.length >= 10 &&
                     currentText !== promptText.trim() &&
-                    (turnCountNow > turnCountBefore || currentText !== textBefore)
+                    currentText !== textBefore
                 );
 
                 console.log('[ChatGPT Poll]', {
@@ -213,21 +229,23 @@
                         lastText = currentText;
                     }
 
-                    // Done: not generating and text is stable for 2 polls (~700ms)
-                    if (!generating && stableCount >= 2) {
+                    // Done: observed generating and now stopped, text stable for 2 polls (~700ms)
+                    if (sawGenerating && !generating && stableCount >= 2) {
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
-                    // Fast path: not generating, stable for 1 poll, and > 2s elapsed
-                    if (!generating && stableCount >= 1 && elapsed > 2000) {
+
+                    // Done: not generating, text stable for 2 polls, and at least 1500ms elapsed
+                    if (!generating && stableCount >= 2 && elapsed > 1500) {
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
-                    // Safety finish: text stable for 4 polls, response is substantial
-                    if (stableCount >= 4 && currentText.length > 30 && elapsed > 2000) {
-                        console.log('[ChatGPT Poll] Text stable for 4 consecutive polls, resolving early.');
+
+                    // Safety finish: text stable for 4 consecutive polls and substantial
+                    if (stableCount >= 4 && currentText.length > 25 && elapsed > 2000) {
+                        console.log('[ChatGPT Poll] Text stable for 4 consecutive polls, resolving.');
                         clearInterval(poll);
                         resolve(currentText);
                         return;
@@ -237,8 +255,13 @@
                 // Timeout
                 if (elapsed >= timeoutMs) {
                     clearInterval(poll);
-                    const fallback = (lastText && lastText !== promptText.trim()) ? lastText : currentText;
-                    resolve(fallback || 'Error: ChatGPT generation timed out.');
+                    if (lastText && lastText !== textBefore && lastText !== promptText.trim()) {
+                        resolve(lastText);
+                    } else if (currentText && currentText !== textBefore && currentText !== promptText.trim()) {
+                        resolve(currentText);
+                    } else {
+                        resolve('Error: ChatGPT generation timed out.');
+                    }
                 }
             }, 350);
         });

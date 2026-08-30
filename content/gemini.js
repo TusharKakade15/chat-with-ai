@@ -43,18 +43,17 @@
         const responseEls = Array.from(document.querySelectorAll('model-response, .model-response, message-content:not(user-query message-content)'));
         if (responseEls.length > 0) {
             const last = responseEls[responseEls.length - 1];
-            const text = extractText(last);
-            if (text.length > 0) return text;
+            return extractText(last);
         }
 
         // Strategy 2: Target response-content or markdown containers in main
         const main = document.querySelector('.conversation-container, main') || document.body;
         const markdowns = Array.from(main.querySelectorAll('.model-response-text, .response-content, .markdown, [class*="markdown"]'));
-        for (let i = markdowns.length - 1; i >= 0; i--) {
-            const el = markdowns[i];
-            if (el.closest('user-query')) continue;
-            const text = extractText(el);
-            if (text.length > 0) return text;
+        if (markdowns.length > 0) {
+            const last = markdowns[markdowns.length - 1];
+            if (!last.closest('user-query')) {
+                return extractText(last);
+            }
         }
 
         return '';
@@ -64,14 +63,20 @@
         if (!el) return '';
         const clone = el.cloneNode(true);
 
-        // Strip non-content / intermediate state elements (thinking boxes, search chips, actions, buttons)
+        // Strip non-content / intermediate state elements (thinking boxes, extension chips, tool status, actions)
         clone.querySelectorAll(
             'script, style, noscript, template, button, nav, svg, ' +
             '[role="button"], .sr-only, [data-test-id*="action"], ' +
             'thought-box, gds-thought-expansion, model-thought, .thought-container, ' +
             '.sources-container, sources-carousel, source-list, citation-container, ' +
             '.citation-tag, search-summary, .status-container, .tool-status, ' +
-            'mat-progress-spinner, mat-spinner, .model-response-header, .response-feedback'
+            'extensions-call-chip, extension-status, extension-card, extension-chip, ' +
+            'extensions-carousel, extension-header, .extension-status, .extension-content, ' +
+            '[class*="extension"], [class*="grounding"], mat-chip, .mat-mdc-chip, .gds-chip, ' +
+            '.tool-chip, .tool-pill, .status-pill, .tool-container, ' +
+            '[data-test-id*="extension"], [data-test-id*="tool"], [data-test-id*="grounding"], ' +
+            'mat-progress-spinner, mat-spinner, .model-response-header, .response-feedback, ' +
+            'mat-icon, gds-icon'
         ).forEach(n => n.remove());
 
         // Find primary markdown or content container
@@ -86,6 +91,8 @@
 
     function cleanText(raw) {
         if (!raw) return '';
+        const utils = window.AIBridgeUtils;
+        const textToProcess = utils && utils.extractDelimitedText ? utils.extractDelimitedText(raw) : raw;
 
         const junkExact = new Set([
             'Gemini is AI and can make mistakes.',
@@ -116,7 +123,7 @@
             'Double-check response'
         ]);
 
-        const lines = raw.split('\n')
+        const lines = textToProcess.split('\n')
             .map(l => l.trim())
             .filter(l => {
                 if (!l) return false;
@@ -124,6 +131,7 @@
                 if (/^Draft\s+\d+$/i.test(l)) return false;
                 if (/^Thought\s+for\s+\d+\s+seconds?$/i.test(l)) return false;
                 if (/^<\s*\d+\s*\/\s*\d+\s*>$/.test(l)) return false;
+                if (/^(connecting to|searching|looking up|checking|loading|fetching|browsing|working on|using|calling|thinking|thought|synthesizing|show drafts|draft \d+|answer now)\b/i.test(l)) return false;
                 if (l.startsWith('{function') || l.includes('__oai_')) return false;
                 if (l.includes('[SYSTEM INSTRUCTION')) return false;
                 if (l.startsWith('User asked:') || l.startsWith('ChatGPT said:') || l.startsWith('Claude said:')) return false;
@@ -135,12 +143,21 @@
         return lines.join('\n').trim();
     }
 
+    function isIntermediaryText(text) {
+        if (!text || text.trim().length === 0) return true;
+        const trimmed = text.trim();
+        if (/^(connecting to|searching|looking up|checking|loading|fetching|browsing|working on|using|calling|thinking|thought|synthesizing|show drafts|draft \d+|answer now)\b/i.test(trimmed)) {
+            return true;
+        }
+        return false;
+    }
+
     function isGenerating() {
         const utils = window.AIBridgeUtils;
         const stopBtn = utils.findStopButton(STOP_BUTTON_SELECTORS);
         if (stopBtn) return true;
 
-        const streamingEl = document.querySelector('.result-streaming, .is-streaming, [data-is-streaming="true"]');
+        const streamingEl = document.querySelector('.result-streaming, .is-streaming, [data-is-streaming="true"], mat-progress-spinner, mat-spinner, extensions-call-chip, [class*="extension-status"]');
         if (streamingEl && utils.isElementVisible(streamingEl)) return true;
 
         return false;
@@ -214,19 +231,13 @@
 
                 const turnCountNow = getAssistantTurnCount();
                 const currentText = getLatestAssistantText();
-
-                // Validation: Must be real content, not an intermediate search tool pill
-                const isIntermediary = (
-                    currentText === 'Searching the web' ||
-                    currentText === 'Synthesizing Roundtable Inputs' ||
-                    currentText === 'Answer now' ||
-                    currentText.length < 15
-                );
+                const isIntermediary = isIntermediaryText(currentText);
 
                 const isNew = (
                     !isIntermediary &&
+                    currentText.length >= 10 &&
                     currentText !== promptText.trim() &&
-                    (turnCountNow > turnCountBefore || currentText !== textBefore)
+                    currentText !== textBefore
                 );
 
                 console.log('[Gemini Poll]', {
@@ -247,42 +258,41 @@
                         lastText = currentText;
                     }
 
-                    // Done when: not generating and text is stable for 2 consecutive polls (~700ms)
-                    if (!generating && stableCount >= 2) {
-                        clearInterval(poll);
-                        resolve(currentText);
-                        return;
-                    }
-
-                    // Done when: Action/feedback buttons appear under response and text is stable for 1 poll
+                    // Condition 1: Action/feedback buttons appear under response (Gemini UI officially completed)
                     if (hasFinishedGenerating() && stableCount >= 1) {
+                        console.log('[Gemini Poll] Finished generation detected via feedback buttons.');
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
 
-                    // Or when: not generating, stable for 1 poll, and > 2s elapsed
-                    if (!generating && stableCount >= 1 && elapsed > 2000) {
+                    // Condition 2: Saw generation start, and now generation has stopped, text stable for 2 polls (~700ms)
+                    if (sawGenerating && !generating && stableCount >= 2) {
+                        console.log('[Gemini Poll] Generation completed after active streaming.');
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
 
-                    // Safety finish: text has been completely unchanged for 4 consecutive polls (~1.4s)
-                    // and response length is substantial, resolving immediately without waiting for timeout
-                    if (stableCount >= 4 && currentText.length > 30 && elapsed > 2000) {
-                        console.log('[Gemini Poll] Text stable for 4 consecutive polls, resolving early.');
+                    // Condition 3: Substantial text stable for 5 consecutive polls (~1.75s) and elapsed > 3000ms
+                    if (!generating && stableCount >= 5 && currentText.length > 25 && elapsed > 3000) {
+                        console.log('[Gemini Poll] Text stable for 5 consecutive polls, resolving.');
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
                 }
 
-                // Safety timeout
+                // Timeout
                 if (elapsed >= timeoutMs) {
                     clearInterval(poll);
-                    const fallback = (lastText && lastText !== promptText.trim() && !isIntermediary) ? lastText : currentText;
-                    resolve(fallback || 'Error: Gemini generation timed out.');
+                    if (lastText && lastText !== textBefore && lastText !== promptText.trim() && !isIntermediaryText(lastText)) {
+                        resolve(lastText);
+                    } else if (currentText && currentText !== textBefore && currentText !== promptText.trim() && !isIntermediaryText(currentText)) {
+                        resolve(currentText);
+                    } else {
+                        resolve('Error: Gemini generation timed out.');
+                    }
                 }
             }, 350);
         });

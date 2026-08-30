@@ -1,0 +1,144 @@
+================================================================================
+           MULTI-AI GROUP CHAT & KNOWLEDGE BRIDGE - SYSTEM PLAN
+================================================================================
+Project: AI Web UI Bridge (Chrome Extension MV3)
+Last Updated: August 2026
+
+--------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY & OBJECTIVE
+--------------------------------------------------------------------------------
+Transform the multi-AI Chrome Extension from a rigid, serial round-robin into a 
+dynamic, natural "Virtual Engineering Team Room" group chat experience.
+
+Key Innovation:
+- Disguise AI identities: ChatGPT, Claude, and Gemini will interact as human 
+  colleagues with distinct specialized engineering roles (e.g., Architect, Backend 
+  Lead, DevOps/SRE) alongside the User (Product/Tech Lead).
+- Eliminates AI sycophancy, polite disclaimers, and repetitive agreements.
+- Strict output delimiters ([MESSAGE]...[/MESSAGE]) ensure deterministic, 
+  zero-fluff scraping with instant parsing.
+- Interactive Side Panel with Click-to-Navigate: Clicking any message in the 
+  side panel activates the corresponding AI tab and smoothly scrolls directly to 
+  that exact message response.
+
+--------------------------------------------------------------------------------
+2. ROLE-BASED VIRTUAL TEAM ARCHITECTURE
+--------------------------------------------------------------------------------
+Instead of models knowing they are in a multi-AI loop, each model is given a 
+specialized human persona in a shared workspace channel:
+
++-------------------------------------------------------------------------------+
+| Participant       | Persona Name & Title       | Primary Lens & Focus         |
++-------------------------------------------------------------------------------+
+| User              | You (Product / Tech Lead)  | Problem definition, business |
+|                   |                            | goals, user constraints      |
+|                   |                            |                              |
+| ChatGPT           | Alex (Senior Backend Lead) | Practical execution, APIs,   |
+|                   |                            | schema design, code snippets |
+|                   |                            |                              |
+| Claude            | Morgan (Principal System   | System design, concurrency,  |
+|                   | Architect & Security)      | security risks, trade-offs   |
+|                   |                            |                              |
+| Gemini            | Jordan (Staff Infrastructure| Scale, latency bottlenecks, |
+|                   | & DevOps Lead)             | cloud cost, failover, edge   |
++-------------------------------------------------------------------------------+
+
+Available Team Presets:
+1. Software Engineering Team:
+   - Alex (Backend/API) | Morgan (Architect/Security) | Jordan (DevOps/Scale)
+2. Product & Startup Board:
+   - Sam (Growth/Marketing) | Taylor (Product/UX) | Riley (Data/Monetization)
+3. Critical Debate & Review Panel:
+   - Proponent (Advocate) | Skeptic (Risk/Critic) | Judge (Synthesizer/Arbitrator)
+
+--------------------------------------------------------------------------------
+3. INJECTION & CONTEXT PROTOCOL
+--------------------------------------------------------------------------------
+When formatting sliding window context in background.js, conversation history is 
+presented as a human Slack/Discord thread.
+
+Prompt Template Example (Injected into Claude / Morgan):
+--------------------------------------------------------------------------------
+[SYSTEM INSTRUCTION: You are Morgan, the Principal Systems Architect on our engineering team. 
+We are in our team's engineering discussion channel with You (Lead), Alex (Backend Lead), and Jordan (DevOps Lead).
+
+RULES:
+1. Respond purely in-character as Morgan (concise, technical, direct, under 150 words).
+2. Never introduce yourself, never use greetings ("Hey team"), and never say "As an AI".
+3. Address colleagues by name when building upon or questioning their points.
+4. Wrap your exact response strictly between [MESSAGE] and [/MESSAGE] tags.]
+
+Recent team discussion:
+- You (Lead): "We need to handle 10,000 real-time chat messages/sec with end-to-end encryption."
+- Alex (Backend): "I suggest Node.js WebSockets backed by Redis Pub/Sub and Postgres for message history."
+
+Provide your architectural perspective directly.
+--------------------------------------------------------------------------------
+
+Model Output:
+--------------------------------------------------------------------------------
+[MESSAGE]
+Alex's Redis Pub/Sub approach will hit a memory and fanout bottleneck at 10k msg/sec if every WebSocket server instance subscribes to all channels. 
+
+For E2EE, avoid storing plaintext in Postgres entirely; store only pre-computed ratchet states and encrypted blobs. I recommend Kafka or NATS Core with client-side Signal Protocol (Double Ratchet) keys. Jordan, how do you see NATS clustering scaling across multiple regions?
+[/MESSAGE]
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+4. ZERO-FLUFF EXTRACTION PROTOCOL
+--------------------------------------------------------------------------------
+In content/chatgpt.js, content/claude.js, and content/gemini.js:
+- Content scripts look specifically for the [MESSAGE]...[/MESSAGE] boundaries.
+- Any conversational preambles ("Sure, here is my thought:") or UI footer junk are 
+  automatically discarded.
+- Streaming parser cleans text in real-time as chunks stream into the DOM.
+
+Extraction Logic:
+```javascript
+function extractCleanResponse(raw) {
+  const match = raw.match(/\[MESSAGE\]([\s\S]*?)\[\/MESSAGE\]/i);
+  if (match && match[1].trim()) {
+    return match[1].trim();
+  }
+  // Fallback if tag is partially streamed or omitted
+  return raw.replace(/\[MESSAGE\]/i, '').replace(/\[\/MESSAGE\]/i, '').trim();
+}
+```
+
+--------------------------------------------------------------------------------
+5. CLICK-TO-NAVIGATE (JUMP TO EXACT POSITION IN AI TAB)
+--------------------------------------------------------------------------------
+How it works:
+1. Message Tagging:
+   - When each AI turn is saved in the Side Panel (chat.js), the message metadata 
+     stores: { aiKey: 'chatgpt'|'claude'|'gemini', turnIndex: N, textSnippet: '...' }
+2. Click Handler:
+   - User clicks any message bubble in the Side Panel.
+3. Tab Focus & Activation:
+   - chat.js sends message to background.js: { type: 'FOCUS_AND_SCROLL', aiKey, turnIndex, textSnippet }
+   - background.js calls chrome.tabs.update(tabId, { active: true }) and brings the browser window to front.
+4. Smooth Scroll & Highlight:
+   - background.js messages the content script: { type: 'SCROLL_TO_TURN', turnIndex, textSnippet }
+   - Content script finds the message DOM element by turn index / text match, executes:
+     element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+   - Triggers a brief highlight flash (pulse animation) on the target element.
+
+--------------------------------------------------------------------------------
+6. IMPLEMENTATION ROADMAP & FILES TO MODIFY
+--------------------------------------------------------------------------------
+1. background.js:
+   - Add Persona & Team Preset definitions.
+   - Update prompt builder to inject human team system instructions + [MESSAGE] tags.
+   - Add tab focus & scroll-to-turn message router.
+   - Track tab IDs and turn indices in conversation log.
+
+2. content/shared.js & content/{chatgpt,claude,gemini}.js:
+   - Implement [MESSAGE] tag extractor in cleanText().
+   - Add SCROLL_TO_TURN listener with smooth scrolling and visual pulse highlight.
+
+3. chat.html / chat.css / chat.js:
+   - Add Team Preset selector in UI (Engineering, Product, Debate).
+   - Display teammate names + role badges on message headers.
+   - Add click-to-navigate action on message bubbles with jump icon (↗).
+
+================================================================================

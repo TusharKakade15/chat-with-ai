@@ -239,5 +239,23 @@ window.AIBridgeUtils = {
             }
         });
         console.log('[AIBridge] Content script listener attached on:', window.location.href);
+    },
+
+    // Extract delimited message block ([MESSAGE]...[/MESSAGE]) or fallback cleanly
+    extractDelimitedText: function(rawText) {
+        if (!rawText) return '';
+        // 1. Check for complete [MESSAGE]...[/MESSAGE] block
+        const completeMatch = rawText.match(/\[MESSAGE\]([\s\S]*?)\[\/MESSAGE\]/i);
+        if (completeMatch && completeMatch[1].trim()) {
+            return completeMatch[1].trim();
+        }
+        // 2. Check for streaming/in-progress [MESSAGE] tag (tag started but not closed yet)
+        const partialMatch = rawText.match(/\[MESSAGE\]([\s\S]*)$/i);
+        if (partialMatch && partialMatch[1].trim()) {
+            return partialMatch[1].trim();
+        }
+        // 3. Fallback: Strip any lingering tags if present
+        return rawText.replace(/\[MESSAGE\]/gi, '').replace(/\[\/MESSAGE\]/gi, '').trim();
     }
 };
+

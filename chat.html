@@ -3,69 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Web UI Bridge</title>
+    <title>Neural Bridge - Aether Chat</title>
     <link rel="stylesheet" href="chat.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2>AI Bridge</h2>
-                <div class="status-indicator">
-                    <span class="status-dot"></span>
-                    <span id="connection-status">Ready</span>
+            <div class="sidebar-top">
+                <div class="brand-header">
+                    <div class="brand-orb">
+                        <div class="orb-glow"></div>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="orb-icon">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+                            <path d="M2 12h20"></path>
+                        </svg>
+                    </div>
+                    <div class="brand-text">
+                        <h2 class="brand-title">Neural Bridge</h2>
+                        <span class="brand-subtitle">PRECISION NEXUS V2.4</span>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="mode-select-container">
-                <label for="mode-select" class="sidebar-label">Target Mode</label>
-                <select id="mode-select" class="mode-select">
-                    <option value="chatgpt" selected>ChatGPT (Single Agent)</option>
-                    <option value="broadcast">Roundtable Broadcast (All)</option>
-                </select>
-            </div>
 
-            <div class="agents-status">
-                <div class="agent active-selectable" id="agent-gpt" data-agent="chatgpt">
-                    <div class="agent-icon gpt-color">GPT</div>
-                    <span>ChatGPT</span>
-                </div>
-                <div class="agent" id="agent-claude" data-agent="claude">
-                    <div class="agent-icon claude-color">CL</div>
-                    <span>Claude</span>
-                </div>
-                <div class="agent" id="agent-gemini" data-agent="gemini">
-                    <div class="agent-icon gemini-color">GEM</div>
-                    <span>Gemini</span>
-                </div>
-            </div>
-
-            <!-- Prompt Settings Section -->
-            <div class="prompt-settings-container">
-                <button type="button" id="toggle-settings-btn" class="settings-toggle-btn">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                    <span>Prompt Settings</span>
-                    <span class="chevron" id="settings-chevron">▶</span>
+                <button type="button" id="new-thread-btn" class="new-thread-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    <span>New Thread</span>
                 </button>
 
-                <div id="settings-body" class="settings-body hidden">
-                    <div class="settings-field">
-                        <label for="system-instruction-input" class="sidebar-label">System Instruction</label>
-                        <textarea id="system-instruction-input" class="settings-textarea" rows="5" placeholder="Enter system instruction..."></textarea>
+                <nav class="nav-menu">
+                    <div class="nav-item active" id="nav-chat">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                        <span>Chat</span>
                     </div>
 
-                    <div class="settings-field">
-                        <label for="turn-prompt-input" class="sidebar-label">Turn Prompt</label>
-                        <textarea id="turn-prompt-input" class="settings-textarea" rows="3" placeholder="Enter turn prompt..."></textarea>
+                    <div class="nav-item" id="nav-personas">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"></path><path d="M9 21h6"></path></svg>
+                        <span>Personas</span>
                     </div>
 
-                    <div class="settings-actions">
-                        <button type="button" id="save-prompts-btn" class="settings-btn save-btn">Save</button>
-                        <button type="button" id="reset-prompts-btn" class="settings-btn reset-btn">Reset</button>
+                    <div class="nav-item" id="nav-history">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        <span>History</span>
                     </div>
-                    <div id="settings-saved-msg" class="settings-saved-msg hidden">Saved!</div>
+
+                    <div class="nav-item" id="nav-settings">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        <span>Settings</span>
+                    </div>
+                </nav>
+            </div>
+
+            <!-- Active Personas Section -->
+            <div class="sidebar-bottom" id="personas-panel">
+                <div class="section-label">ACTIVE PERSONAS</div>
+                <div class="personas-list">
+                    <div class="persona-row" id="agent-gpt" data-agent="chatgpt">
+                        <div class="persona-row-main">
+                            <span class="persona-dot gpt-dot"></span>
+                            <span class="persona-name">Alex (ChatGPT)</span>
+                        </div>
+                        <label class="ai-toggle-switch" title="Toggle Alex (ChatGPT) in discussion">
+                            <input type="checkbox" class="ai-toggle-input" data-agent="chatgpt" checked>
+                            <span class="ai-toggle-slider gpt-toggle"></span>
+                        </label>
+                    </div>
+                    <div class="persona-row" id="agent-claude" data-agent="claude">
+                        <div class="persona-row-main">
+                            <span class="persona-dot claude-dot"></span>
+                            <span class="persona-name">Morgan (Claude)</span>
+                        </div>
+                        <label class="ai-toggle-switch" title="Toggle Morgan (Claude) in discussion">
+                            <input type="checkbox" class="ai-toggle-input" data-agent="claude" checked>
+                            <span class="ai-toggle-slider claude-toggle"></span>
+                        </label>
+                    </div>
+                    <div class="persona-row" id="agent-gemini" data-agent="gemini">
+                        <div class="persona-row-main">
+                            <span class="persona-dot gemini-dot"></span>
+                            <span class="persona-name">Jordan (Gemini)</span>
+                        </div>
+                        <label class="ai-toggle-switch" title="Toggle Jordan (Gemini) in discussion">
+                            <input type="checkbox" class="ai-toggle-input" data-agent="gemini" checked>
+                            <span class="ai-toggle-slider gemini-toggle"></span>
+                        </label>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -73,28 +96,372 @@
         <!-- Main Chat Area -->
         <main class="chat-area">
             <header class="chat-header">
-                <h1 id="current-action">Chat with ChatGPT</h1>
-                <p id="action-subtitle">Send prompts directly to your active ChatGPT web tab.</p>
+                <div class="header-left">
+                    <h1 id="current-action" class="header-title">Aether Chat</h1>
+                </div>
+                <div class="header-right">
+                    <!-- Font Size Zoom Control (+ and -) -->
+                    <div class="font-size-control" title="Adjust text size">
+                        <button type="button" id="font-decrease-btn" class="font-btn" title="Decrease font size (smaller)">−</button>
+                        <span id="font-size-label" class="font-size-label">100%</span>
+                        <button type="button" id="font-increase-btn" class="font-btn" title="Increase font size (larger)">+</button>
+                    </div>
+
+                    <div class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span id="connection-status">Ready</span>
+                    </div>
+                    <button type="button" id="close-panel-btn" class="header-icon-btn close-panel-btn" title="Close Side Panel">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
             </header>
 
-            <div class="messages-container" id="messages-container">
-                <!-- Messages will be injected here -->
-                <div class="welcome-message">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="welcome-icon"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12 2.1 7.1"></path><path d="M12 12l9.9 4.9"></path></svg>
-                    <h3>AI Web Bridge</h3>
-                    <p>Send prompts directly to ChatGPT and scrape verified responses locally without API keys.</p>
+            <!-- 1. Chat View Screen -->
+            <div id="chat-view" class="view-panel chat-view-panel">
+                <div class="messages-container" id="messages-container">
+                    <div class="welcome-message">
+                        <div class="welcome-icon-wrapper">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12 2.1 7.1"></path><path d="M12 12l9.9 4.9"></path></svg>
+                        </div>
+                        <h3>Multi-Agent Neural Roundtable</h3>
+                        <p id="action-subtitle">Enter a prompt to initiate precision discussion among ChatGPT, Claude, and Gemini.</p>
+                    </div>
+                </div>
+
+                <!-- Floating Pill Bottom Composer -->
+                <div class="composer-outer">
+                    <!-- Top Action Bar (Secondary Continue Button placed top-right above Send) -->
+                    <div class="composer-top-bar">
+                        <button type="button" id="continue-btn" class="continue-top-btn hidden" title="Continue the roundtable discussion with active models">
+                            <span>Continue Round</span>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
+                        </button>
+                    </div>
+
+                    <!-- Mention Autocomplete Dropdown -->
+                    <div id="mention-popup" class="mention-popup hidden">
+                        <div class="mention-popup-header">Direct question to AI</div>
+                        <div class="mention-popup-list" id="mention-popup-list"></div>
+                    </div>
+
+                    <div class="composer-pill">
+                        <textarea id="prompt-input" placeholder="Contribute to roundtable or tag with @..." rows="1"></textarea>
+                        <div class="composer-actions">
+                            <button type="button" id="send-btn" class="send-circle-btn" title="Send message">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="input-area">
-                <textarea id="prompt-input" placeholder="Type your prompt for ChatGPT..." rows="1"></textarea>
-                <div class="input-buttons">
-                    <button id="send-btn">Send to ChatGPT</button>
-                    <button id="continue-btn" class="continue-btn hidden">Continue Round ▶</button>
+            <!-- 2. On-Page Personas Configuration Screen (Editorial Style) -->
+            <div id="personas-view" class="view-panel personas-page-view hidden">
+                <div class="personas-editorial-container">
+                    <!-- Top Editorial Header -->
+                    <div class="editorial-header">
+                        <div class="editorial-title-wrap">
+                            <h1 class="editorial-main-title">Configure Personas</h1>
+                            <p class="editorial-subtitle">Shape the identity, tone, and operational parameters of your primary neural interfaces.</p>
+                        </div>
+                        <button type="button" id="reset-personas-btn" class="editorial-reset-btn" title="Reset all personas to default">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                                <path d="M3 3v5h5"></path>
+                            </svg>
+                            <span>RESET DEFAULT</span>
+                        </button>
+                    </div>
+
+                    <div class="editorial-rule"></div>
+
+                    <!-- 3 Model Columns Grid -->
+                    <div class="editorial-grid">
+                        <!-- Column 1: ChatGPT -->
+                        <div class="editorial-col">
+                            <div class="editorial-col-header">
+                                <h2 class="editorial-model-name">CHATGPT</h2>
+                                <div class="editorial-avatar-badge gpt-avatar-badge" title="ChatGPT">
+                                    <div class="editorial-avatar-inner"></div>
+                                </div>
+                            </div>
+
+                            <div class="editorial-input-block">
+                                <span class="editorial-label">PERSONA NAME</span>
+                                <input type="text" id="persona-gpt-name" class="editorial-name-input" placeholder="Alex" value="Alex" />
+                            </div>
+
+                            <div class="editorial-input-block prompt-block">
+                                <span class="editorial-label">SYSTEM ROLE PROMPT</span>
+                                <textarea id="persona-gpt-prompt" class="editorial-prompt-textarea" rows="6" placeholder="You are an expert analyst. Your tone is direct, objective, and highly structured. Prioritize actionable insights and avoid conversational filler.">You are an expert analyst. Your tone is direct, objective, and highly structured. Prioritize actionable insights and avoid conversational filler.</textarea>
+                            </div>
+                        </div>
+
+                        <!-- Column 2: Claude -->
+                        <div class="editorial-col">
+                            <div class="editorial-col-header">
+                                <h2 class="editorial-model-name">CLAUDE</h2>
+                                <div class="editorial-avatar-badge claude-avatar-badge" title="Claude">
+                                    <div class="editorial-avatar-inner"></div>
+                                </div>
+                            </div>
+
+                            <div class="editorial-input-block">
+                                <span class="editorial-label">PERSONA NAME</span>
+                                <input type="text" id="persona-claude-name" class="editorial-name-input" placeholder="Morgan" value="Morgan" />
+                            </div>
+
+                            <div class="editorial-input-block prompt-block">
+                                <span class="editorial-label">SYSTEM ROLE PROMPT</span>
+                                <textarea id="persona-claude-prompt" class="editorial-prompt-textarea" rows="6" placeholder="Act as our lead editor and creative collaborator. Share nuanced, structured, and insightful editorial perspectives with conceptual depth and clarity.">Act as our lead editor and creative collaborator. Share nuanced, structured, and insightful editorial perspectives with conceptual depth and clarity.</textarea>
+                            </div>
+                        </div>
+
+                        <!-- Column 3: Gemini -->
+                        <div class="editorial-col">
+                            <div class="editorial-col-header">
+                                <h2 class="editorial-model-name">GEMINI</h2>
+                                <div class="editorial-avatar-badge gemini-avatar-badge" title="Gemini">
+                                    <div class="editorial-avatar-inner"></div>
+                                </div>
+                            </div>
+
+                            <div class="editorial-input-block">
+                                <span class="editorial-label">PERSONA NAME</span>
+                                <input type="text" id="persona-gemini-name" class="editorial-name-input" placeholder="Jordan" value="Jordan" />
+                            </div>
+
+                            <div class="editorial-input-block prompt-block">
+                                <span class="editorial-label">SYSTEM ROLE PROMPT</span>
+                                <textarea id="persona-gemini-prompt" class="editorial-prompt-textarea" rows="6" placeholder="You are a comprehensive researcher. Pull from diverse disciplines, connect disparate concepts, and present information with clear citations and expansive context.">You are a comprehensive researcher. Pull from diverse disciplines, connect disparate concepts, and present information with clear citations and expansive context.</textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- User Identity & Role Section -->
+                    <div class="editorial-user-role-card">
+                        <div class="editorial-user-role-header">
+                            <div class="editorial-user-badge">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                                <span>YOUR ROLE & IDENTITY (USER)</span>
+                            </div>
+                            <p class="editorial-user-role-hint">How the AI teammates address and frame your identity in the roundtable discussion.</p>
+                        </div>
+                        <div class="editorial-user-inputs-grid">
+                            <div class="editorial-input-block">
+                                <span class="editorial-label">YOUR NAME</span>
+                                <input type="text" id="persona-user-name" class="editorial-name-input" placeholder="You" value="You" />
+                            </div>
+                            <div class="editorial-input-block">
+                                <span class="editorial-label">YOUR ROLE / TITLE</span>
+                                <input type="text" id="persona-user-role" class="editorial-name-input" placeholder="Discussion Lead" value="Discussion Lead" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Character Limit Field Row -->
+                    <div class="editorial-limit-row">
+                        <div class="editorial-limit-info">
+                            <span class="editorial-label">MAXIMUM RESPONSE CHARACTER LIMIT</span>
+                            <p class="editorial-limit-hint">Target character count constraint injected into each AI's turn instruction.</p>
+                        </div>
+                        <div class="editorial-limit-input-wrap">
+                            <input type="number" id="persona-character-limit" class="editorial-limit-input" min="100" max="4000" step="50" value="500" placeholder="500" />
+                            <span class="editorial-limit-unit">chars</span>
+                        </div>
+                    </div>
+
+                    <!-- System Rules Configuration Card (Placed below Character Limit) -->
+                    <div class="editorial-rules-card">
+                        <div class="editorial-rules-header">
+                            <div class="editorial-rules-badge">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                <span>ROUNDTABLE RULES & DIRECTIVES</span>
+                            </div>
+                            <p class="editorial-rules-hint">Injected into turn instructions. Use {name} for agent name and {limit} for character limit.</p>
+                        </div>
+                        <div class="editorial-input-block prompt-block">
+                            <span class="editorial-label">RULES FOR ALL PARTICIPATING AIS</span>
+                            <textarea id="persona-rules-input" class="editorial-prompt-textarea" rows="5" placeholder="1. Contribute concisely from your designated perspective (under {limit} characters).&#10;2. Jump straight into your analysis without generic introductions or conversational filler.&#10;3. Address colleagues by name when building upon, questioning, or critiquing their points.&#10;4. Wrap your exact response between [MESSAGE] and [/MESSAGE] tags."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="editorial-rule"></div>
+
+                    <!-- Bottom Action Bar -->
+                    <div class="editorial-footer">
+                        <button type="button" id="cancel-personas-btn" class="editorial-back-link">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                            <span>BACK TO CHAT</span>
+                        </button>
+
+                        <div class="editorial-footer-right">
+                            <div id="personas-saved-msg" class="editorial-saved-toast hidden">CONFIGURATION SAVED ✓</div>
+                            <button type="button" id="save-personas-btn" class="editorial-save-button">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                                <span>SAVE CONFIGURATION</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. On-Page History Screen (Editorial Style) -->
+            <div id="history-view" class="view-panel history-page-view hidden">
+                <div class="history-editorial-container">
+                    <!-- Top Header -->
+                    <div class="history-page-top">
+                        <div class="history-title-wrap">
+                            <h1 class="editorial-main-title">Discussion Archive</h1>
+                            <p class="editorial-subtitle">Review, resume, and manage your saved multi-agent roundtable sessions and prompts.</p>
+                        </div>
+                        <button type="button" id="clear-all-history-btn" class="editorial-reset-btn history-clear-btn" title="Clear all saved threads">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                            <span>CLEAR ALL SESSIONS</span>
+                        </button>
+                    </div>
+
+                    <div class="editorial-rule"></div>
+
+                    <!-- Search / Filter Bar & Count Status -->
+                    <div class="history-toolbar">
+                        <div class="history-search-wrap">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            <input type="text" id="history-search-input" class="history-search-input" placeholder="Search conversations by topic or keywords..." />
+                        </div>
+                        <span id="history-count-badge" class="history-count-badge">0 SESSIONS</span>
+                    </div>
+
+                    <!-- Thread List Cards Stream -->
+                    <div class="history-cards-list" id="history-cards-list">
+                        <!-- Dynamic thread cards rendered here -->
+                    </div>
+
+                    <div class="editorial-rule"></div>
+
+                    <!-- Bottom Action Bar -->
+                    <div class="editorial-footer">
+                        <button type="button" id="back-to-chat-from-history-btn" class="editorial-back-link">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                            <span>BACK TO CHAT</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. On-Page Settings Screen (Editorial Style) -->
+            <div id="settings-view" class="view-panel settings-page-view hidden">
+                <div class="settings-editorial-container">
+                    <!-- Top Header -->
+                    <div class="editorial-header">
+                        <div class="editorial-title-wrap">
+                            <h1 class="editorial-main-title">Settings & Preferences</h1>
+                            <p class="editorial-subtitle">Customize the appearance, theme, and interface behavior of your extension.</p>
+                        </div>
+                    </div>
+
+                    <div class="editorial-rule"></div>
+
+                    <!-- Appearance & Theme Section -->
+                    <div class="settings-section-card">
+                        <div class="settings-section-header">
+                            <div class="settings-section-badge">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></svg>
+                                <span>APPEARANCE & THEME</span>
+                            </div>
+                            <p class="settings-section-hint">Choose how Aether Chat looks across the extension.</p>
+                        </div>
+
+                        <!-- 3 Theme Options Grid -->
+                        <div class="theme-options-grid">
+                            <!-- Option 1: Light Mode -->
+                            <div class="theme-option-card" data-theme-value="light" id="theme-card-light">
+                                <div class="theme-preview light-preview">
+                                    <div class="preview-header"></div>
+                                    <div class="preview-body">
+                                        <div class="preview-bubble preview-bubble-ai"></div>
+                                        <div class="preview-bubble preview-bubble-user"></div>
+                                    </div>
+                                </div>
+                                <div class="theme-card-info">
+                                    <div class="theme-radio-circle"></div>
+                                    <div class="theme-label-wrap">
+                                        <span class="theme-card-title">Light Mode</span>
+                                        <span class="theme-card-desc">Clean, crisp light appearance</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Option 2: Dark Mode -->
+                            <div class="theme-option-card" data-theme-value="dark" id="theme-card-dark">
+                                <div class="theme-preview dark-preview">
+                                    <div class="preview-header"></div>
+                                    <div class="preview-body">
+                                        <div class="preview-bubble preview-bubble-ai"></div>
+                                        <div class="preview-bubble preview-bubble-user"></div>
+                                    </div>
+                                </div>
+                                <div class="theme-card-info">
+                                    <div class="theme-radio-circle"></div>
+                                    <div class="theme-label-wrap">
+                                        <span class="theme-card-title">Dark Mode</span>
+                                        <span class="theme-card-desc">Soft, dark palette easy on the eyes</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Option 3: System Mode -->
+                            <div class="theme-option-card" data-theme-value="system" id="theme-card-system">
+                                <div class="theme-preview system-preview">
+                                    <div class="preview-header"></div>
+                                    <div class="preview-body">
+                                        <div class="preview-bubble preview-bubble-ai"></div>
+                                        <div class="preview-bubble preview-bubble-user"></div>
+                                    </div>
+                                </div>
+                                <div class="theme-card-info">
+                                    <div class="theme-radio-circle"></div>
+                                    <div class="theme-label-wrap">
+                                        <span class="theme-card-title">System Mode</span>
+                                        <span class="theme-card-desc">Syncs with your OS light/dark theme</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="editorial-rule"></div>
+
+                    <!-- Bottom Action Bar -->
+                    <div class="editorial-footer">
+                        <button type="button" id="back-to-chat-from-settings-btn" class="editorial-back-link">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                            <span>BACK TO CHAT</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </main>
     </div>
+
+    <!-- Confirmation Dialog Modal -->
+    <div id="confirm-modal-overlay" class="confirm-modal-overlay hidden">
+        <div class="confirm-modal-card">
+            <div class="confirm-modal-icon-wrap">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            </div>
+            <div class="confirm-modal-content">
+                <h3 class="confirm-modal-title">Clear All History?</h3>
+                <p class="confirm-modal-desc">This will permanently delete all discussion threads, roundtable sessions, and message history stored in the application.</p>
+            </div>
+            <div class="confirm-modal-actions">
+                <button type="button" id="confirm-cancel-btn" class="confirm-btn-cancel">Cancel</button>
+                <button type="button" id="confirm-delete-btn" class="confirm-btn-delete">Clear All History</button>
+            </div>
+        </div>
+    </div>
+
     <script src="chat.js"></script>
 </body>
 </html>
