@@ -1,14 +1,19 @@
 {
   "manifest_version": 3,
-  "name": "AI Web UI Bridge",
-  "version": "1.0",
-  "description": "Bridge chat between ChatGPT, Claude, and Gemini",
+  "name": "PRISM — Multi AI Chat",
+  "version": "1.0.0",
+  "description": "Multi-agent roundtable chat bridging ChatGPT, Claude, and Gemini without API keys",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
     "tabs",
     "activeTab",
+    "scripting",
     "storage",
-    "clipboardRead",
-    "clipboardWrite",
     "sidePanel"
   ],
   "host_permissions": [
@@ -25,7 +30,13 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "AI Web UI Bridge"
+    "default_title": "PRISM — Multi AI Chat",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "side_panel": {
     "default_path": "chat.html"

@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const promptInput = document.getElementById('prompt-input');
     const sendBtn = document.getElementById('send-btn');
     const continueBtn = document.getElementById('continue-btn');
+    const refetchRoundBtn = document.getElementById('refetch-round-btn');
     const currentAction = document.getElementById('current-action');
     const messagesContainer = document.getElementById('messages-container');
     const statusText = document.getElementById('connection-status');
@@ -123,9 +124,17 @@ document.addEventListener('DOMContentLoaded', () => {
         messagesContainer.innerHTML = `
             <div class="welcome-message">
                 <div class="welcome-icon-wrapper">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12 2.1 7.1"></path><path d="M12 12l9.9 4.9"></path></svg>
+                    <svg width="34" height="34" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M24 82 L60 20 L74 28 L42 82 Z" fill="#38bdf8"/>
+                        <path d="M60 20 L96 82 L78 88 L46 32 Z" fill="#10b981"/>
+                        <path d="M96 82 L24 82 L34 66 L86 66 Z" fill="#f97316"/>
+                        <polygon points="60,42 72,66 48,66" fill="#0c0e14"/>
+                        <line x1="60" y1="20" x2="96" y2="82" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+                        <line x1="96" y1="82" x2="24" y2="82" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+                        <line x1="24" y1="82" x2="60" y2="20" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+                    </svg>
                 </div>
-                <h3>Multi-Agent Neural Roundtable</h3>
+                <h3>PRISM Multi-Agent Roundtable</h3>
                 <p id="action-subtitle">Enter a prompt to initiate precision discussion among ChatGPT, Claude, and Gemini.</p>
             </div>
         `;
@@ -185,6 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         renderHistoryView();
+        updateConversationTitleHeader();
     }
 
     function loadAllThreadsFromStorage() {
@@ -200,8 +210,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 activeThreadId = generateThreadId();
                 renderWelcomeMessage();
+        updateConversationTitleHeader();
             }
             renderHistoryView();
+            updateConversationTitleHeader();
         });
     }
 
@@ -244,6 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
             scrollToBottom();
         } else {
             renderWelcomeMessage();
+        updateConversationTitleHeader();
         }
 
         isBusy = false;
@@ -454,8 +467,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─── Mode & Header UI ─────────────────────────────────────────────
+    function getActiveConversationTitle() {
+        if (activeThreadId) {
+            const thread = threads.find(t => t.id === activeThreadId);
+            if (thread && thread.title) {
+                return thread.title;
+            }
+        }
+        const firstUserMsg = savedFeedItems.find(item => item.msgType === 'user');
+        if (firstUserMsg && firstUserMsg.text) {
+            const clean = firstUserMsg.text.replace(/\s+/g, ' ').trim();
+            return clean.slice(0, 36) + (clean.length > 36 ? '...' : '');
+        }
+        return 'New Conversation';
+    }
+
+    function updateConversationTitleHeader() {
+        if (!currentAction) return;
+        if (!chatView || !chatView.classList.contains('hidden')) {
+            const title = getActiveConversationTitle();
+            currentAction.textContent = title;
+            currentAction.title = title;
+        }
+    }
+
     function updateModeUI() {
-        if (currentAction) currentAction.textContent = 'Aether Chat';
+        updateConversationTitleHeader();
         if (statusSubtitle) statusSubtitle.textContent = 'Enter a prompt to initiate precision discussion among ChatGPT, Claude, and Gemini.';
         if (promptInput) promptInput.placeholder = isRoundComplete ? 'Contribute to the roundtable, or press Continue Round ▶...' : 'Contribute to the roundtable...';
     }
@@ -516,9 +553,153 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ─── Interactive Walkthrough Tour Controller ──────────────────────────
+    const walkthroughModalOverlay = document.getElementById('walkthrough-modal-overlay');
+    const walkthroughCloseBtn = document.getElementById('walkthrough-close-btn');
+    const walkthroughPrevBtn = document.getElementById('walkthrough-prev-btn');
+    const walkthroughNextBtn = document.getElementById('walkthrough-next-btn');
+    const walkthroughDotsContainer = document.getElementById('walkthrough-dots');
+    const walkthroughSlides = document.querySelectorAll('.walkthrough-slide');
+    const tourHelpBtn = document.getElementById('tour-help-btn');
+    const replayWalkthroughBtn = document.getElementById('replay-walkthrough-btn');
+
+    let currentWalkthroughIndex = 0;
+    const totalWalkthroughSlides = walkthroughSlides.length || 5;
+
+    function showWalkthrough(startIndex = 0) {
+        currentWalkthroughIndex = Math.max(0, Math.min(startIndex, totalWalkthroughSlides - 1));
+        updateWalkthroughUI();
+        if (walkthroughModalOverlay) {
+            walkthroughModalOverlay.classList.remove('hidden');
+        }
+    }
+
+    function hideWalkthrough() {
+        if (walkthroughModalOverlay) {
+            walkthroughModalOverlay.classList.add('hidden');
+        }
+    }
+
+    function completeWalkthrough() {
+        hideWalkthrough();
+        if (chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set({ prism_walkthrough_seen: true });
+        }
+    }
+
+    function updateWalkthroughUI() {
+        walkthroughSlides.forEach((slide, idx) => {
+            if (idx === currentWalkthroughIndex) {
+                slide.classList.add('active');
+            } else {
+                slide.classList.remove('active');
+            }
+        });
+
+        // Update dots
+        if (walkthroughDotsContainer) {
+            const dots = walkthroughDotsContainer.querySelectorAll('.walkthrough-dot');
+            dots.forEach((dot, idx) => {
+                if (idx === currentWalkthroughIndex) {
+                    dot.classList.add('active');
+                } else {
+                    dot.classList.remove('active');
+                }
+            });
+        }
+
+        // Update Prev button visibility
+        if (walkthroughPrevBtn) {
+            if (currentWalkthroughIndex === 0) {
+                walkthroughPrevBtn.classList.add('hidden');
+            } else {
+                walkthroughPrevBtn.classList.remove('hidden');
+            }
+        }
+
+        // Update Next button label
+        if (walkthroughNextBtn) {
+            if (currentWalkthroughIndex === totalWalkthroughSlides - 1) {
+                walkthroughNextBtn.textContent = 'Get Started 🚀';
+            } else {
+                walkthroughNextBtn.textContent = 'Next';
+            }
+        }
+    }
+
+    if (walkthroughNextBtn) {
+        walkthroughNextBtn.addEventListener('click', () => {
+            if (currentWalkthroughIndex < totalWalkthroughSlides - 1) {
+                currentWalkthroughIndex++;
+                updateWalkthroughUI();
+            } else {
+                completeWalkthrough();
+            }
+        });
+    }
+
+    if (walkthroughPrevBtn) {
+        walkthroughPrevBtn.addEventListener('click', () => {
+            if (currentWalkthroughIndex > 0) {
+                currentWalkthroughIndex--;
+                updateWalkthroughUI();
+            }
+        });
+    }
+
+    if (walkthroughDotsContainer) {
+        walkthroughDotsContainer.addEventListener('click', (e) => {
+            const dot = e.target.closest('.walkthrough-dot');
+            if (dot && dot.dataset.index !== undefined) {
+                currentWalkthroughIndex = parseInt(dot.dataset.index, 10);
+                updateWalkthroughUI();
+            }
+        });
+    }
+
+    if (walkthroughCloseBtn) {
+        walkthroughCloseBtn.addEventListener('click', completeWalkthrough);
+    }
+
+    if (walkthroughModalOverlay) {
+        walkthroughModalOverlay.addEventListener('click', (e) => {
+            if (e.target === walkthroughModalOverlay) {
+                completeWalkthrough();
+            }
+        });
+    }
+
+    if (tourHelpBtn) {
+        tourHelpBtn.addEventListener('click', () => {
+            showWalkthrough(0);
+        });
+    }
+
+    if (replayWalkthroughBtn) {
+        replayWalkthroughBtn.addEventListener('click', () => {
+            showWalkthrough(0);
+        });
+    }
+
+    // Check first-time user status on load
+    if (chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['prism_walkthrough_seen'], (res) => {
+            if (!res.prism_walkthrough_seen) {
+                setTimeout(() => {
+                    showWalkthrough(0);
+                }, 400);
+            }
+        });
+    }
+
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && confirmModalOverlay && !confirmModalOverlay.classList.contains('hidden')) {
-            hideConfirmModal();
+        if (e.key === 'Escape') {
+            if (confirmModalOverlay && !confirmModalOverlay.classList.contains('hidden')) {
+                hideConfirmModal();
+            }
+            if (walkthroughModalOverlay && !walkthroughModalOverlay.classList.contains('hidden')) {
+                completeWalkthrough();
+            }
         }
     });
 
@@ -536,6 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.runtime.sendMessage({ type: 'CLEAR_HISTORY' }).catch(() => {});
 
         renderWelcomeMessage();
+        updateConversationTitleHeader();
         promptInput.value = '';
         promptInput.style.height = 'auto';
         promptInput.disabled = false;
@@ -642,9 +824,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (navPersonas) navPersonas.classList.remove('active');
         if (navHistory) navHistory.classList.remove('active');
         if (navSettings) navSettings.classList.remove('active');
-        if (currentAction) {
-            currentAction.textContent = 'Aether Chat';
-        }
+        updateConversationTitleHeader();
     }
 
     function showPersonasView() {
@@ -1217,6 +1397,142 @@ document.addEventListener('DOMContentLoaded', () => {
         continueBtn.addEventListener('click', handleContinue);
     }
 
+    // ─── Refetch Handlers ──────────────────────────────────────────────
+    async function refetchAgentMessage(btn, agentKey, msgCard) {
+        if (!agentKey || btn.classList.contains('refetching')) return;
+
+        btn.classList.add('refetching');
+        const origHTML = btn.innerHTML;
+        btn.innerHTML = `
+            <svg class="spin-icon" viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="2" x2="12" y2="6"></line>
+                <line x1="12" y1="18" x2="12" y2="22"></line>
+                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                <line x1="2" y1="12" x2="6" y2="12"></line>
+                <line x1="18" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+            </svg>
+            <span>Refetching...</span>
+        `;
+
+        try {
+            const res = await new Promise((resolve) => {
+                chrome.runtime.sendMessage({ type: 'REFETCH_AGENT', agent: agentKey }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        resolve({ status: 'error', error: chrome.runtime.lastError.message });
+                    } else {
+                        resolve(response || { status: 'error', error: 'No response' });
+                    }
+                });
+            });
+
+            if (res.status === 'ok' && res.text) {
+                // Update DOM message body
+                const body = msgCard.querySelector('.message-body');
+                if (body) {
+                    body.innerHTML = escapeHtml(res.text);
+                }
+
+                // Update savedFeedItems
+                const norm = agentKey.toLowerCase();
+                for (let i = savedFeedItems.length - 1; i >= 0; i--) {
+                    const item = savedFeedItems[i];
+                    if (item.type === 'msg' && item.msgType === 'ai') {
+                        const itemAgent = (item.agentClass || item.sender || '').toLowerCase();
+                        if (itemAgent.includes(norm) || (norm === 'chatgpt' && itemAgent.includes('gpt'))) {
+                            item.text = res.text;
+                            break;
+                        }
+                    }
+                }
+
+                if (res.conversationLog) {
+                    conversationLog = res.conversationLog;
+                }
+                saveCurrentThreadState();
+
+                btn.classList.remove('refetching');
+                btn.classList.add('refetched');
+                btn.innerHTML = `<span>✓ Refetched</span>`;
+                setTimeout(() => {
+                    btn.classList.remove('refetched');
+                    btn.innerHTML = origHTML;
+                }, 2200);
+            } else {
+                console.log('[AIBridge] Refetch notice:', res.error || 'Empty response');
+                btn.classList.remove('refetching');
+                btn.classList.add('refetch-failed');
+                const errMsg = res.error || 'Could not connect to AI tab';
+                btn.title = errMsg;
+                btn.innerHTML = `<span>✕ Not Ready</span>`;
+                setTimeout(() => {
+                    btn.classList.remove('refetch-failed');
+                    btn.innerHTML = origHTML;
+                    btn.removeAttribute('title');
+                }, 2500);
+            }
+        } catch (err) {
+            console.log('[AIBridge] Refetch notice:', err.message || String(err));
+            btn.classList.remove('refetching');
+            btn.classList.add('refetch-failed');
+            btn.innerHTML = `<span>✕ Failed</span>`;
+            setTimeout(() => {
+                btn.classList.remove('refetch-failed');
+                btn.innerHTML = origHTML;
+            }, 2200);
+        }
+    }
+
+    // Event delegation on messagesContainer for per-card Refetch button
+    messagesContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.refetch-msg-btn');
+        if (btn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const agentKey = btn.dataset.agent;
+            const msgCard = btn.closest('.message-card');
+            if (agentKey && msgCard) {
+                refetchAgentMessage(btn, agentKey, msgCard);
+            }
+        }
+    });
+
+    if (refetchRoundBtn) {
+        refetchRoundBtn.addEventListener('click', async () => {
+            if (refetchRoundBtn.classList.contains('refetching')) return;
+            refetchRoundBtn.classList.add('refetching');
+            const origHTML = refetchRoundBtn.innerHTML;
+            refetchRoundBtn.innerHTML = `<span>Refetching all...</span>`;
+
+            // Find all active AI message cards in current view (deduplicated by agent)
+            const activeAiCards = Array.from(messagesContainer.querySelectorAll('.message-card.ai-card'));
+            const lastCardsByAgent = new Map();
+            for (let i = activeAiCards.length - 1; i >= 0; i--) {
+                const card = activeAiCards[i];
+                const agent = card.dataset.agent;
+                if (agent && !lastCardsByAgent.has(agent)) {
+                    lastCardsByAgent.set(agent, card);
+                }
+            }
+
+            const promises = [];
+            for (const [agent, card] of lastCardsByAgent.entries()) {
+                const btn = card.querySelector('.refetch-msg-btn') || card;
+                promises.push(refetchAgentMessage(btn, agent, card));
+            }
+
+            await Promise.allSettled(promises);
+
+            refetchRoundBtn.classList.remove('refetching');
+            refetchRoundBtn.innerHTML = `<span>✓ All Refetched</span>`;
+            setTimeout(() => {
+                refetchRoundBtn.innerHTML = origHTML;
+            }, 2200);
+        });
+    }
+
     // ─── Messaging & Round Handlers ────────────────────────────────────
     function handleSend() {
         const text = promptInput.value.trim();
@@ -1305,11 +1621,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (continueBtn) {
             continueBtn.classList.remove('hidden');
         }
+        if (refetchRoundBtn) {
+            refetchRoundBtn.classList.remove('hidden');
+        }
     }
 
     function hideContinueButton() {
         if (continueBtn) {
             continueBtn.classList.add('hidden');
+        }
+        if (refetchRoundBtn) {
+            refetchRoundBtn.classList.add('hidden');
         }
     }
 
@@ -1365,12 +1687,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const monogram = pInfo.monogram || cleanName.substring(0, 2).toUpperCase();
             const cls = (agentClass || (pInfo.service ? pInfo.service.toLowerCase() : 'ai')).toLowerCase();
 
+            let targetAgentKey = 'chatgpt';
+            if (cls.includes('claude')) targetAgentKey = 'claude';
+            else if (cls.includes('gemini')) targetAgentKey = 'gemini';
+            else if (cls.includes('gpt')) targetAgentKey = 'chatgpt';
+
             msgDiv.innerHTML = `
                 <div class="message-avatar ${cls}">${monogram}</div>
-                <div class="message-card ai-card ${cls}-card">
+                <div class="message-card ai-card ${cls}-card" data-agent="${targetAgentKey}">
                     <div class="message-card-header">
                         <span class="message-agent-name ${cls}-name">${escapeHtml(displayName)}</span>
-                        <span class="message-time">${time}</span>
+                        <div class="message-header-actions">
+                            <button type="button" class="refetch-msg-btn" data-agent="${targetAgentKey}" title="Refetch latest response from ${escapeHtml(cleanName)}">
+                                <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="23 4 23 10 17 10"></polyline>
+                                    <polyline points="1 20 1 14 7 14"></polyline>
+                                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                </svg>
+                                <span>Refetch</span>
+                            </button>
+                            <span class="message-time">${time}</span>
+                        </div>
                     </div>
                     <div class="message-body">${escapeHtml(text)}</div>
                 </div>

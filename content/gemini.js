@@ -152,68 +152,99 @@
         return false;
     }
 
+    function getRawLatestAssistantText() {
+        const responseEls = Array.from(document.querySelectorAll('model-response, .model-response, message-content:not(user-query message-content)'));
+        if (responseEls.length > 0) {
+            const last = responseEls[responseEls.length - 1];
+            return (last.textContent || '');
+        }
+        return '';
+    }
+
     function isGenerating() {
         const utils = window.AIBridgeUtils;
         const stopBtn = utils.findStopButton(STOP_BUTTON_SELECTORS);
         if (stopBtn) return true;
 
-        const streamingEl = document.querySelector('.result-streaming, .is-streaming, [data-is-streaming="true"], mat-progress-spinner, mat-spinner, extensions-call-chip, [class*="extension-status"]');
+        const streamingEl = document.querySelector(
+            '.result-streaming, .is-streaming, [data-is-streaming="true"], ' +
+            'mat-progress-spinner, mat-spinner, extensions-call-chip, ' +
+            '[class*="extension-status"], .sparkle-container.animating, ' +
+            '.sparkle-icon.animating, [class*="sparkle-animating"], ' +
+            'button:has(mat-icon[fonticon="stop"])'
+        );
         if (streamingEl && utils.isElementVisible(streamingEl)) return true;
 
         return false;
     }
 
-    function hasFinishedGenerating() {
-        // When Gemini finishes generating, feedback/action buttons appear under the latest response
-        const lastResponse = document.querySelector('model-response:last-of-type, .model-response:last-of-type');
-        if (lastResponse) {
-            const actions = lastResponse.querySelector('response-feedback, .response-feedback, [aria-label="Good response"], [aria-label="Bad response"], [aria-label="Share response"], [aria-label="Share"], [aria-label*="Copy"]');
-            if (actions && window.AIBridgeUtils.isElementVisible(actions)) return true;
+    function hasFinishedGenerating(turnCountBefore, turnCountNow) {
+        // Only valid if a new turn was added
+        if (turnCountNow < turnCountBefore) return false;
+
+        const responses = Array.from(document.querySelectorAll('model-response, .model-response'));
+        if (responses.length === 0) return false;
+        const lastResponse = responses[responses.length - 1];
+
+        // Ensure actions are present on the latest response
+        const actions = lastResponse.querySelector(
+            'response-feedback, .response-feedback, ' +
+            '[aria-label="Good response"], [aria-label="Bad response"], ' +
+            '[aria-label="Share response"], [aria-label="Share"], [aria-label*="Copy"]'
+        );
+        if (actions && window.AIBridgeUtils.isElementVisible(actions)) {
+            return true;
         }
         return false;
     }
 
     // ─── Prompt Injection & Lifecycle ──────────────────────────────────
 
-    window.AIBridgeUtils.setupMessageListener(async (promptText) => {
-        const utils = window.AIBridgeUtils;
-        console.log('[Gemini] Prompt injection starting...');
+    window.AIBridgeUtils.setupMessageListener(
+        async (promptText) => {
+            const utils = window.AIBridgeUtils;
+            console.log('[Gemini] Prompt injection starting...');
 
-        // Snapshot state before sending
-        const turnCountBefore = getAssistantTurnCount();
-        const textBefore = getLatestAssistantText();
-        console.log('[Gemini] Turns before:', turnCountBefore, '| Text before length:', textBefore.length);
+            // Snapshot state before sending
+            const turnCountBefore = getAssistantTurnCount();
+            const textBefore = getLatestAssistantText();
+            console.log('[Gemini] Turns before:', turnCountBefore, '| Text before length:', textBefore.length);
 
-        // 1. Find and fill input
-        const input = await utils.waitForElement(INPUT_SELECTORS, 15000);
-        console.log('[Gemini] Input found:', input.tagName, input.className);
-        utils.simulateInput(input, promptText);
+            // 1. Find and fill input
+            const input = await utils.waitForElement(INPUT_SELECTORS, 15000);
+            console.log('[Gemini] Input found:', input.tagName, input.className);
+            utils.simulateInput(input, promptText);
 
-        // 2. Allow Angular/Quill change detection to settle, then click send
-        let sent = false;
-        for (let attempt = 0; attempt < 15; attempt++) {
-            await new Promise(r => setTimeout(r, 300));
-            const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
-            if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute('aria-disabled') !== 'true') {
-                console.log('[Gemini] Send button ready, clicking.');
-                utils.clickButton(sendBtn);
-                sent = true;
-                break;
+            // 2. Allow Angular/Quill change detection to settle, then click send
+            let sent = false;
+            for (let attempt = 0; attempt < 15; attempt++) {
+                await new Promise(r => setTimeout(r, 300));
+                const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
+                if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute('aria-disabled') !== 'true') {
+                    console.log('[Gemini] Send button ready, clicking.');
+                    utils.clickButton(sendBtn);
+                    sent = true;
+                    break;
+                }
             }
-        }
 
-        if (!sent) {
-            console.log('[Gemini] Send button not found or disabled, sending via Enter key.');
-            utils.pressEnter(input);
-        }
+            if (!sent) {
+                console.log('[Gemini] Send button not found or disabled, sending via Enter key.');
+                utils.pressEnter(input);
+            }
 
-        // 3. Wait for new response
-        console.log('[Gemini] Waiting for response...');
-        const response = await waitForResponse(turnCountBefore, textBefore, promptText, 60000);
-        console.log('[Gemini] Final response length:', response.length);
-        console.log('[Gemini] Response:', response.substring(0, 100));
-        return response || 'Error: Could not extract Gemini response.';
-    });
+            // 3. Wait for new response (90s timeout)
+            console.log('[Gemini] Waiting for response...');
+            const response = await waitForResponse(turnCountBefore, textBefore, promptText, 90000);
+            console.log('[Gemini] Final response length:', response.length);
+            console.log('[Gemini] Response:', response.substring(0, 100));
+            return response || 'Error: Could not extract Gemini response.';
+        },
+        () => {
+            // Refetch callback to grab the latest assistant text instantly
+            return getLatestAssistantText();
+        }
+    );
 
     // ─── Polling for Response ──────────────────────────────────────────
 
@@ -237,7 +268,7 @@
                     !isIntermediary &&
                     currentText.length >= 10 &&
                     currentText !== promptText.trim() &&
-                    currentText !== textBefore
+                    (turnCountNow > turnCountBefore || currentText !== textBefore)
                 );
 
                 console.log('[Gemini Poll]', {
@@ -258,25 +289,29 @@
                         lastText = currentText;
                     }
 
-                    // Condition 1: Action/feedback buttons appear under response (Gemini UI officially completed)
-                    if (hasFinishedGenerating() && stableCount >= 1) {
+                    // Check if model opened a [MESSAGE] tag that has not been closed yet
+                    const rawText = getRawLatestAssistantText();
+                    const hasOpenMessageTag = rawText.includes('[MESSAGE]') && !rawText.includes('[/MESSAGE]');
+
+                    // Condition 1: Action/feedback buttons appear under response + text stable for at least 2 polls (~700ms) + not currently generating + tag closed
+                    if (!hasOpenMessageTag && !generating && hasFinishedGenerating(turnCountBefore, turnCountNow) && stableCount >= 2 && elapsed > 1500) {
                         console.log('[Gemini Poll] Finished generation detected via feedback buttons.');
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
 
-                    // Condition 2: Saw generation start, and now generation has stopped, text stable for 2 polls (~700ms)
-                    if (sawGenerating && !generating && stableCount >= 2) {
+                    // Condition 2: Saw generation start, and now generation has stopped, text stable for 2 polls (~700ms) + tag closed
+                    if (!hasOpenMessageTag && sawGenerating && !generating && stableCount >= 2) {
                         console.log('[Gemini Poll] Generation completed after active streaming.');
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
 
-                    // Condition 3: Substantial text stable for 5 consecutive polls (~1.75s) and elapsed > 3000ms
-                    if (!generating && stableCount >= 5 && currentText.length > 25 && elapsed > 3000) {
-                        console.log('[Gemini Poll] Text stable for 5 consecutive polls, resolving.');
+                    // Condition 3: Substantial text stable for 4 consecutive polls (~1.4s) and elapsed > 2500ms + not generating + tag closed
+                    if (!hasOpenMessageTag && !generating && stableCount >= 4 && currentText.length > 25 && elapsed > 2500) {
+                        console.log('[Gemini Poll] Text stable for 4 consecutive polls, resolving.');
                         clearInterval(poll);
                         resolve(currentText);
                         return;
@@ -291,7 +326,13 @@
                     } else if (currentText && currentText !== textBefore && currentText !== promptText.trim() && !isIntermediaryText(currentText)) {
                         resolve(currentText);
                     } else {
-                        resolve('Error: Gemini generation timed out.');
+                        // Last-resort extraction before reporting timeout
+                        const finalText = getLatestAssistantText();
+                        if (finalText && finalText !== textBefore && finalText !== promptText.trim() && !isIntermediaryText(finalText)) {
+                            resolve(finalText);
+                        } else {
+                            resolve('Error: Gemini generation timed out.');
+                        }
                     }
                 }
             }, 350);

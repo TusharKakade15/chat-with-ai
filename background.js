@@ -160,8 +160,13 @@ ${rulesText}]`;
 
 function cleanMessageTags(raw) {
   if (!raw) return '';
-  const match = raw.match(/\[MESSAGE\]([\s\S]*?)\[\/MESSAGE\]/i);
-  if (match && match[1].trim()) return match[1].trim();
+  // Match all [MESSAGE]...[/MESSAGE] tags and take the LAST one
+  // (to avoid pulling previous turns or quoted instructions)
+  const allMatches = Array.from(raw.matchAll(/\[MESSAGE\]([\s\S]*?)\[\/MESSAGE\]/gi));
+  if (allMatches.length > 0) {
+    const lastMatch = allMatches[allMatches.length - 1];
+    if (lastMatch && lastMatch[1] && lastMatch[1].trim()) return lastMatch[1].trim();
+  }
   return raw.replace(/\[MESSAGE\]/gi, '').replace(/\[\/MESSAGE\]/gi, '').trim();
 }
 
@@ -172,9 +177,10 @@ const AI_CONFIG = {
   gemini:  { searchPrefix: 'https://gemini.google.com', newChatUrl: 'https://gemini.google.com/app' }
 };
 
-// ─── Side Panel Behavior ──────────────────────────────────────────────
-// Top-level: runs every time the service worker starts (not just on install)
-if (chrome.sidePanel) {
+// ─── Side Panel & Window Lifecycle (Cross-Browser: Chrome, Brave, Safari) ─
+let popupWindowId = null;
+
+if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
   try {
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionIconClick: true }).catch(() => {});
   } catch (e) {
@@ -182,12 +188,50 @@ if (chrome.sidePanel) {
   }
 }
 
-// Fallback: if setPanelBehavior doesn't take effect, explicitly open on click
-chrome.action.onClicked.addListener((tab) => {
-  if (chrome.sidePanel) {
-    chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
+// Open Side Panel on Chromium (Chrome/Brave), or fallback to companion popup window on Safari/Firefox
+chrome.action.onClicked.addListener(async (tab) => {
+  if (chrome.sidePanel && chrome.sidePanel.open) {
+    try {
+      await chrome.sidePanel.open({ windowId: tab.windowId });
+      return;
+    } catch (e) {
+      console.warn('[AIBridge] chrome.sidePanel.open failed, trying window fallback:', e.message);
+    }
+  }
+
+  // Fallback for Safari / environments without Side Panel API:
+  if (popupWindowId !== null && chrome.windows) {
+    try {
+      const existingWin = await chrome.windows.get(popupWindowId);
+      if (existingWin) {
+        await chrome.windows.update(popupWindowId, { focused: true });
+        return;
+      }
+    } catch (e) {
+      popupWindowId = null;
+    }
+  }
+
+  try {
+    const win = await chrome.windows.create({
+      url: chrome.runtime.getURL('chat.html'),
+      type: 'popup',
+      width: 440,
+      height: 750,
+      focused: true
+    });
+    popupWindowId = win.id;
+  } catch (err) {
+    // If popup window fails, open in a new tab
+    chrome.tabs.create({ url: chrome.runtime.getURL('chat.html') });
   }
 });
+
+if (chrome.windows && chrome.windows.onRemoved) {
+  chrome.windows.onRemoved.addListener((winId) => {
+    if (winId === popupWindowId) popupWindowId = null;
+  });
+}
 
 // ─── Tab Lifecycle ────────────────────────────────────────────────────
 
@@ -257,6 +301,28 @@ async function ensureContentScriptReady(tabId, label) {
   let alive = await pingTab(tabId);
   if (alive) { console.log(`[${label}] Content script is active.`); return; }
 
+  // 1. Attempt dynamic script re-injection (handles post-extension-reload disconnected tabs without losing page state)
+  if (chrome.scripting) {
+    try {
+      console.log(`[${label}] Attempting dynamic script injection into tab ${tabId}...`);
+      const norm = (label || '').toLowerCase();
+      const scriptFile = norm.includes('claude') ? 'content/claude.js' :
+                         norm.includes('gemini') ? 'content/gemini.js' : 'content/chatgpt.js';
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['content/shared.js', scriptFile]
+      });
+      alive = await pingTab(tabId);
+      if (alive) {
+        console.log(`[${label}] Injected and active without reload!`);
+        return;
+      }
+    } catch (injErr) {
+      console.log(`[${label}] Dynamic injection skipped/failed:`, injErr.message || injErr);
+    }
+  }
+
+  // 2. Fallback: reload tab and wait
   console.log(`[${label}] Content script not responding. Reloading tab...`);
   await chrome.tabs.reload(tabId);
   await waitForTabLoad(tabId);
@@ -593,6 +659,48 @@ async function executeRound(explicitTaggedAgents = null) {
   }
 }
 
+async function handleRefetchAgent(agentKey) {
+  const normKey = (agentKey || '').toLowerCase();
+  const config = AI_CONFIG[normKey];
+  if (!config) throw new Error(`Unknown agent: ${agentKey}`);
+
+  const tabs = await chrome.tabs.query({});
+  let targetTab = tabs.find(t => t.url && t.url.startsWith(config.searchPrefix));
+  if (!targetTab) {
+    throw new Error(`Tab for ${config.label || agentKey} is not open.`);
+  }
+
+  // Ensure content script is connected and ready
+  await ensureContentScriptReady(targetTab.id, config.label || agentKey);
+
+  return new Promise((resolve, reject) => {
+    chrome.tabs.sendMessage(targetTab.id, { type: 'REFETCH_LATEST' }, (res) => {
+      if (chrome.runtime.lastError) {
+        return reject(new Error(chrome.runtime.lastError.message));
+      }
+      if (!res || res.text === undefined) {
+        return reject(new Error('No response returned from content script.'));
+      }
+      const cleanText = cleanMessageTags(res.text);
+      if (!cleanText) {
+        return reject(new Error('Could not extract latest text from tab.'));
+      }
+
+      // Update the most recent entry for this agent in conversationLog
+      for (let i = conversationLog.length - 1; i >= 0; i--) {
+        const entryKey = (conversationLog[i].aiKey || conversationLog[i].agent || '').toLowerCase();
+        if (entryKey === normKey || (normKey === 'chatgpt' && entryKey.includes('gpt'))) {
+          conversationLog[i].text = cleanText;
+          break;
+        }
+      }
+      saveConversationState();
+
+      resolve({ text: cleanText, conversationLog: conversationLog });
+    });
+  });
+}
+
 // ─── Message Listener ─────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -630,6 +738,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     currentRoundNumber = 0;
     saveConversationState();
     sendResponse({ status: 'cleared' });
+  } else if (request.type === 'REFETCH_AGENT') {
+    handleRefetchAgent(request.agent)
+      .then(result => sendResponse({ status: 'ok', text: result.text, conversationLog: result.conversationLog }))
+      .catch(err => sendResponse({ status: 'error', error: err.message || String(err) }));
+    return true;
   } else if (request.type === 'SYNC_THREAD') {
     conversationLog = request.conversationLog || [];
     currentRoundNumber = request.roundNumber || 0;

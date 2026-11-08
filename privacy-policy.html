@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — PRISM Multi AI Chat</title>
+  <style>
+    :root {
+      --bg: #090b10;
+      --card-bg: #11141e;
+      --border: rgba(255, 255, 255, 0.1);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+      line-height: 1.65;
+      margin: 0;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px 40px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 6px;
+      color: #ffffff;
+      letter-spacing: -0.02em;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 24px;
+    }
+    h2 {
+      font-size: 1.25rem;
+      margin-top: 32px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      color: #ffffff;
+    }
+    p, li {
+      color: var(--text-muted);
+      font-size: 0.96rem;
+    }
+    strong {
+      color: var(--text-main);
+    }
+    ul {
+      padding-left: 20px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 0.85rem;
+      color: #64748b;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="badge">Chrome Web Store Compliance</div>
+    <h1>Privacy Policy</h1>
+    <p><strong>PRISM — Multi AI Chat</strong> (Browser Extension)</p>
+    <p><em>Last Updated: November 8, 2026</em></p>
+
+    <h2>1. Zero External Data Collection or Transmission</h2>
+    <p>PRISM does not own, operate, or communicate with any external backend servers, tracking servers, or telemetry endpoints. We do not track browsing habits, clicks, search queries, or usage metrics. We do not collect, monetize, sell, or transfer your personal data to any third parties.</p>
+
+    <h2>2. Local Browser Storage Only</h2>
+    <p>All discussion threads, custom persona configurations, and roundtable history are stored <strong>strictly on your local device</strong> via the standard Chrome <code>storage.local</code> API. This data never leaves your computer and can be cleared at any time via the extension interface or by uninstalling the extension.</p>
+
+    <h2>3. Client-Side DOM Automation (No Credentials Stored)</h2>
+    <p>PRISM operates entirely client-side, interacting with already-open browser tabs that you are signed into (ChatGPT, Claude, Gemini). PRISM never captures, intercepts, or transmits passwords, authentication tokens, or account credentials.</p>
+
+    <h2>4. Scoped Permissions &amp; Technical Justification</h2>
+    <ul>
+      <li><strong>tabs:</strong> Used solely to detect, activate, and coordinate ChatGPT, Claude, and Gemini tabs during roundtable conversations.</li>
+      <li><strong>activeTab:</strong> Used to interact with the target AI tab during prompt delivery.</li>
+      <li><strong>scripting:</strong> Used to maintain content script connectivity across browser tab lifecycle events.</li>
+      <li><strong>storage:</strong> Used strictly to save local chat history and user-configured personas on your device.</li>
+      <li><strong>sidePanel:</strong> Used to display the unified chat workspace within Chrome's side panel interface.</li>
+      <li><strong>Host Permissions:</strong> Strictly restricted to <code>chatgpt.com</code>, <code>claude.ai</code>, and <code>gemini.google.com</code>.</li>
+    </ul>
+
+    <h2>5. Third-Party Services</h2>
+    <p>Your interactions with AI providers are governed by their respective privacy terms:</p>
+    <ul>
+      <li><a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener">OpenAI Privacy Policy</a></li>
+      <li><a href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener">Anthropic Privacy Policy</a></li>
+      <li><a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a></li>
+    </ul>
+
+    <div class="footer">
+      PRISM — Multi AI Chat &bull; Open &amp; Private Browser Extension
+    </div>
+  </div>
+</body>
+</html>

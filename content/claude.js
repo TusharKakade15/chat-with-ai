@@ -156,6 +156,22 @@
         return false;
     }
 
+    function getRawLatestAssistantText() {
+        const responseBlocks = Array.from(document.querySelectorAll(
+            '.standard-markdown, .progressive-markdown, .font-claude-response'
+        ));
+        const assistantBlocks = responseBlocks.filter(el => {
+            if (el.closest('[data-message-author="human"]')) return false;
+            if (el.closest('.font-user-message')) return false;
+            if (el.closest('[data-cds="UserMessage"]')) return false;
+            return true;
+        });
+        if (assistantBlocks.length > 0) {
+            return assistantBlocks[assistantBlocks.length - 1].textContent || '';
+        }
+        return '';
+    }
+
     // ─── Generating Detection ─────────────────────────────────────────
 
     function isGenerating() {
@@ -171,44 +187,50 @@
 
     // ─── Prompt Injection & Lifecycle ──────────────────────────────────
 
-    window.AIBridgeUtils.setupMessageListener(async (promptText) => {
-        const utils = window.AIBridgeUtils;
-        console.log('[Claude] Prompt injection starting...');
+    window.AIBridgeUtils.setupMessageListener(
+        async (promptText) => {
+            const utils = window.AIBridgeUtils;
+            console.log('[Claude] Prompt injection starting...');
 
-        const turnCountBefore = getAssistantTurnCount();
-        const textBefore = getLatestAssistantText();
-        console.log('[Claude] Turns before:', turnCountBefore, '| Text before length:', textBefore.length);
+            const turnCountBefore = getAssistantTurnCount();
+            const textBefore = getLatestAssistantText();
+            console.log('[Claude] Turns before:', turnCountBefore, '| Text before length:', textBefore.length);
 
-        // 1. Find and fill input
-        const input = await utils.waitForElement(INPUT_SELECTORS, 15000);
-        console.log('[Claude] Input found:', input.tagName, input.className);
-        utils.simulateInput(input, promptText);
+            // 1. Find and fill input
+            const input = await utils.waitForElement(INPUT_SELECTORS, 15000);
+            console.log('[Claude] Input found:', input.tagName, input.className);
+            utils.simulateInput(input, promptText);
 
-        // 2. Allow ProseMirror to update, then click send
-        let sent = false;
-        for (let attempt = 0; attempt < 20; attempt++) {
-            await new Promise(r => setTimeout(r, 300));
-            const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
-            if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute('aria-disabled') !== 'true') {
-                console.log('[Claude] Send button ready, clicking.');
-                utils.clickButton(sendBtn);
-                sent = true;
-                break;
+            // 2. Allow ProseMirror to update, then click send
+            let sent = false;
+            for (let attempt = 0; attempt < 20; attempt++) {
+                await new Promise(r => setTimeout(r, 300));
+                const sendBtn = utils.findSendButton(SEND_BUTTON_SELECTORS);
+                if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute('aria-disabled') !== 'true') {
+                    console.log('[Claude] Send button ready, clicking.');
+                    utils.clickButton(sendBtn);
+                    sent = true;
+                    break;
+                }
             }
-        }
 
-        if (!sent) {
-            console.log('[Claude] Send button not found, sending via Enter key.');
-            utils.pressEnter(input);
-        }
+            if (!sent) {
+                console.log('[Claude] Send button not found, sending via Enter key.');
+                utils.pressEnter(input);
+            }
 
-        // 3. Wait for new response (increased timeout to 90s for Claude)
-        console.log('[Claude] Waiting for response...');
-        const response = await waitForResponse(turnCountBefore, textBefore, promptText, 90000);
-        console.log('[Claude] Final response length:', response.length);
-        console.log('[Claude] Response:', response.substring(0, 200));
-        return response || 'Error: Could not extract Claude response.';
-    });
+            // 3. Wait for new response (increased timeout to 90s for Claude)
+            console.log('[Claude] Waiting for response...');
+            const response = await waitForResponse(turnCountBefore, textBefore, promptText, 90000);
+            console.log('[Claude] Final response length:', response.length);
+            console.log('[Claude] Response:', response.substring(0, 200));
+            return response || 'Error: Could not extract Claude response.';
+        },
+        () => {
+            // Refetch callback to re-scrape latest assistant text instantly
+            return getLatestAssistantText();
+        }
+    );
 
     // ─── Polling for Response ──────────────────────────────────────────
 
@@ -232,7 +254,7 @@
                     !isIntermediary &&
                     currentText.length >= 10 &&
                     currentText !== promptText.trim() &&
-                    currentText !== textBefore
+                    (turnCountNow > turnCountBefore || currentText !== textBefore)
                 );
 
                 console.log('[Claude Poll]', {
@@ -254,22 +276,26 @@
                         lastText = currentText;
                     }
 
-                    // Done when: not generating and text is stable for 2 consecutive polls
-                    if (sawGenerating && !generating && stableCount >= 2) {
+                    // Check if model opened a [MESSAGE] tag that has not been closed yet
+                    const rawText = getRawLatestAssistantText();
+                    const hasOpenMessageTag = rawText.includes('[MESSAGE]') && !rawText.includes('[/MESSAGE]');
+
+                    // Done when: not generating, tag closed, and text is stable for 2 consecutive polls
+                    if (!hasOpenMessageTag && sawGenerating && !generating && stableCount >= 2) {
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
 
-                    // Or when: not generating, stable for 2 polls, and > 1.5s elapsed
-                    if (!generating && stableCount >= 2 && elapsed > 1500) {
+                    // Or when: not generating, stable for 2 polls, tag closed, and > 1.5s elapsed
+                    if (!hasOpenMessageTag && !generating && stableCount >= 2 && elapsed > 1500) {
                         clearInterval(poll);
                         resolve(currentText);
                         return;
                     }
 
-                    // Safety finish: text stable for 4 polls, response is substantial
-                    if (stableCount >= 4 && currentText.length > 30 && elapsed > 2000) {
+                    // Safety finish: text stable for 4 polls, response is substantial, not generating, tag closed
+                    if (!hasOpenMessageTag && !generating && stableCount >= 4 && currentText.length > 30 && elapsed > 2000) {
                         console.log('[Claude Poll] Text stable for 4 consecutive polls, resolving.');
                         clearInterval(poll);
                         resolve(currentText);

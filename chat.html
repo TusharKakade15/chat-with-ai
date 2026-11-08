@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neural Bridge - Aether Chat</title>
+    <title>PRISM — Multi AI Chat</title>
     <link rel="stylesheet" href="chat.css">
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
@@ -15,15 +15,34 @@
                 <div class="brand-header">
                     <div class="brand-orb">
                         <div class="orb-glow"></div>
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="orb-icon">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
-                            <path d="M2 12h20"></path>
+                        <svg width="28" height="28" viewBox="0 0 120 120" fill="none" class="orb-icon" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <linearGradient id="brandBlue" x1="22" y1="84" x2="60" y2="16" gradientUnits="userSpaceOnUse">
+                                    <stop offset="0%" stop-color="#38bdf8"/>
+                                    <stop offset="100%" stop-color="#6366f1"/>
+                                </linearGradient>
+                                <linearGradient id="brandEmerald" x1="60" y1="16" x2="98" y2="84" gradientUnits="userSpaceOnUse">
+                                    <stop offset="0%" stop-color="#34d399"/>
+                                    <stop offset="100%" stop-color="#059669"/>
+                                </linearGradient>
+                                <linearGradient id="brandAmber" x1="98" y1="84" x2="22" y2="84" gradientUnits="userSpaceOnUse">
+                                    <stop offset="0%" stop-color="#fb923c"/>
+                                    <stop offset="100%" stop-color="#ea580c"/>
+                                </linearGradient>
+                            </defs>
+                            <path d="M24 82 L60 20 L74 28 L42 82 Z" fill="url(#brandBlue)"/>
+                            <path d="M60 20 L96 82 L78 88 L46 32 Z" fill="url(#brandEmerald)"/>
+                            <path d="M96 82 L24 82 L34 66 L86 66 Z" fill="url(#brandAmber)"/>
+                            <polygon points="60,42 72,66 48,66" fill="#0c0e14"/>
+                            <polygon points="60,45 68,63 52,63" fill="#ffffff" opacity="0.15"/>
+                            <line x1="60" y1="20" x2="96" y2="82" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+                            <line x1="96" y1="82" x2="24" y2="82" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+                            <line x1="24" y1="82" x2="60" y2="20" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
                         </svg>
                     </div>
                     <div class="brand-text">
-                        <h2 class="brand-title">Neural Bridge</h2>
-                        <span class="brand-subtitle">PRECISION NEXUS V2.4</span>
+                        <h2 class="brand-title">PRISM</h2>
+                        <span class="brand-subtitle">MULTI-AI ROUNDTABLE</span>
                     </div>
                 </div>
 
@@ -97,7 +116,7 @@
         <main class="chat-area">
             <header class="chat-header">
                 <div class="header-left">
-                    <h1 id="current-action" class="header-title">Aether Chat</h1>
+                    <h1 id="current-action" class="header-title" title="New Conversation">New Conversation</h1>
                 </div>
                 <div class="header-right">
                     <!-- Font Size Zoom Control (+ and -) -->
@@ -111,6 +130,9 @@
                         <span class="status-dot"></span>
                         <span id="connection-status">Ready</span>
                     </div>
+                    <button type="button" id="tour-help-btn" class="header-icon-btn tour-help-btn" title="Open PRISM Walkthrough">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    </button>
                     <button type="button" id="close-panel-btn" class="header-icon-btn close-panel-btn" title="Close Side Panel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
@@ -122,9 +144,17 @@
                 <div class="messages-container" id="messages-container">
                     <div class="welcome-message">
                         <div class="welcome-icon-wrapper">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12 2.1 7.1"></path><path d="M12 12l9.9 4.9"></path></svg>
+                            <svg width="34" height="34" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M24 82 L60 20 L74 28 L42 82 Z" fill="url(#brandBlue)"/>
+                                <path d="M60 20 L96 82 L78 88 L46 32 Z" fill="url(#brandEmerald)"/>
+                                <path d="M96 82 L24 82 L34 66 L86 66 Z" fill="url(#brandAmber)"/>
+                                <polygon points="60,42 72,66 48,66" fill="#0c0e14"/>
+                                <line x1="60" y1="20" x2="96" y2="82" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+                                <line x1="96" y1="82" x2="24" y2="82" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+                                <line x1="24" y1="82" x2="60" y2="20" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+                            </svg>
                         </div>
-                        <h3>Multi-Agent Neural Roundtable</h3>
+                        <h3>PRISM Multi-Agent Roundtable</h3>
                         <p id="action-subtitle">Enter a prompt to initiate precision discussion among ChatGPT, Claude, and Gemini.</p>
                     </div>
                 </div>
@@ -133,6 +163,14 @@
                 <div class="composer-outer">
                     <!-- Top Action Bar (Secondary Continue Button placed top-right above Send) -->
                     <div class="composer-top-bar">
+                        <button type="button" id="refetch-round-btn" class="refetch-top-btn hidden" title="Refetch latest responses from active AI tabs">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <polyline points="1 20 1 14 7 14"></polyline>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            </svg>
+                            <span>Refetch Latest</span>
+                        </button>
                         <button type="button" id="continue-btn" class="continue-top-btn hidden" title="Continue the roundtable discussion with active models">
                             <span>Continue Round</span>
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
@@ -370,7 +408,7 @@
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></svg>
                                 <span>APPEARANCE & THEME</span>
                             </div>
-                            <p class="settings-section-hint">Choose how Aether Chat looks across the extension.</p>
+                            <p class="settings-section-hint">Choose how PRISM looks across the extension.</p>
                         </div>
 
                         <!-- 3 Theme Options Grid -->
@@ -431,6 +469,21 @@
                         </div>
                     </div>
 
+                    <!-- Orientation & Tour Section -->
+                    <div class="settings-section-card" style="margin-top: 18px;">
+                        <div class="settings-section-header">
+                            <div class="settings-section-badge">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                                <span>ORIENTATION & GUIDE</span>
+                            </div>
+                            <p class="settings-section-hint">Revisit the interactive walkthrough or explore core features of PRISM.</p>
+                        </div>
+                        <button type="button" id="replay-walkthrough-btn" class="settings-tour-btn">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
+                            <span>Launch Interactive Walkthrough</span>
+                        </button>
+                    </div>
+
                     <div class="editorial-rule"></div>
 
                     <!-- Bottom Action Bar -->
@@ -443,6 +496,125 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Interactive Walkthrough Tour Modal -->
+    <div id="walkthrough-modal-overlay" class="walkthrough-modal-overlay hidden">
+        <div class="walkthrough-modal-card">
+            <button type="button" id="walkthrough-close-btn" class="walkthrough-close-btn" title="Skip Walkthrough">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+
+            <div class="walkthrough-slides-container">
+                <!-- Slide 1: Welcome to PRISM -->
+                <div class="walkthrough-slide active" data-slide="0">
+                    <div class="walkthrough-badge">WELCOME TO PRISM</div>
+                    <div class="walkthrough-icon-wrap">
+                        <svg width="42" height="42" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M24 82 L60 20 L74 28 L42 82 Z" fill="#38bdf8"/>
+                            <path d="M60 20 L96 82 L78 88 L46 32 Z" fill="#34d399"/>
+                            <path d="M96 82 L24 82 L34 66 L86 66 Z" fill="#fb923c"/>
+                            <polygon points="60,42 72,66 48,66" fill="#0c0e14"/>
+                            <line x1="60" y1="20" x2="96" y2="82" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+                            <line x1="96" y1="82" x2="24" y2="82" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+                            <line x1="24" y1="82" x2="60" y2="20" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+                        </svg>
+                    </div>
+                    <h3 class="walkthrough-title">Three Frontier Minds, One Panel</h3>
+                    <p class="walkthrough-desc">PRISM orchestrates <strong>ChatGPT</strong>, <strong>Claude</strong>, and <strong>Gemini</strong> into a unified collaborative roundtable without requiring API keys or subscriptions.</p>
+                    <div class="walkthrough-tip">
+                        <span class="tip-dot"></span>
+                        <span>Prerequisite: Simply ensure you are logged into your AI accounts in your browser.</span>
+                    </div>
+                </div>
+
+                <!-- Slide 2: Multi-Agent Roundtable -->
+                <div class="walkthrough-slide" data-slide="1">
+                    <div class="walkthrough-badge">ROUNDTABLE DISCUSSIONS</div>
+                    <div class="walkthrough-visual-models">
+                        <span class="model-pill pill-gpt">🟢 ChatGPT</span>
+                        <span class="model-arrow">⇄</span>
+                        <span class="model-pill pill-claude">🟠 Claude</span>
+                        <span class="model-arrow">⇄</span>
+                        <span class="model-pill pill-gemini">🔵 Gemini</span>
+                    </div>
+                    <h3 class="walkthrough-title">Debate, Critique &amp; Synthesize</h3>
+                    <p class="walkthrough-desc">Enter any prompt in the bottom composer. All active models respond in sequence, analyzing your topic from diverse angles and building upon each other's ideas.</p>
+                    <div class="walkthrough-tip">
+                        <span class="tip-dot"></span>
+                        <span>Click <strong>"Continue Round ▶"</strong> after any response to deepen the collaborative debate.</span>
+                    </div>
+                </div>
+
+                <!-- Slide 3: Precision @Mentions -->
+                <div class="walkthrough-slide" data-slide="2">
+                    <div class="walkthrough-badge">TARGETED INQUIRIES</div>
+                    <div class="walkthrough-visual-mention">
+                        <span class="mention-tag">@Claude</span>
+                        <span class="mention-text">compare the runtime complexity...</span>
+                    </div>
+                    <h3 class="walkthrough-title">Direct Answers with @Mentions</h3>
+                    <p class="walkthrough-desc">Need a targeted perspective without starting a full roundtable? Type <strong>@</strong> anywhere in your prompt to direct specific inquiries straight to any single AI or persona.</p>
+                    <div class="walkthrough-tip">
+                        <span class="tip-dot"></span>
+                        <span>You can also toggle which AIs participate using the switches in the left sidebar.</span>
+                    </div>
+                </div>
+
+                <!-- Slide 4: Customizable Personas -->
+                <div class="walkthrough-slide" data-slide="3">
+                    <div class="walkthrough-badge">PERSONA CUSTOMIZATION</div>
+                    <div class="walkthrough-visual-personas">
+                        <div class="persona-mini-card">
+                            <span class="persona-mini-role">Code Auditor</span>
+                            <span class="persona-mini-sub">Strict, analytical</span>
+                        </div>
+                        <div class="persona-mini-card">
+                            <span class="persona-mini-role">Creative Editor</span>
+                            <span class="persona-mini-sub">Nuanced, literary</span>
+                        </div>
+                    </div>
+                    <h3 class="walkthrough-title">Tailor Roles &amp; Directives</h3>
+                    <p class="walkthrough-desc">Navigate to the <strong>Personas</strong> tab to rename models and assign bespoke system roles (e.g. Lead Architect, Fact-Checker, or Creative Collaborator) with custom rules and character limits.</p>
+                    <div class="walkthrough-tip">
+                        <span class="tip-dot"></span>
+                        <span>Personas guide how each AI responds and how they address each other in conversation.</span>
+                    </div>
+                </div>
+
+                <!-- Slide 5: Private & Local -->
+                <div class="walkthrough-slide" data-slide="4">
+                    <div class="walkthrough-badge">LOCAL &amp; PRIVATE</div>
+                    <div class="walkthrough-visual-privacy">
+                        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                            <polyline points="9 12 11 14 15 10"></polyline>
+                        </svg>
+                    </div>
+                    <h3 class="walkthrough-title">100% Private, On Your Device</h3>
+                    <p class="walkthrough-desc">PRISM communicates directly with your open browser tabs. Zero external servers, zero trackers, and zero telemetry. All chats are archived privately on your machine.</p>
+                    <div class="walkthrough-tip">
+                        <span class="tip-dot"></span>
+                        <span>Access previous conversations anytime from the <strong>History</strong> tab.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Walkthrough Navigation Footer -->
+            <div class="walkthrough-footer">
+                <div class="walkthrough-dots" id="walkthrough-dots">
+                    <span class="walkthrough-dot active" data-index="0"></span>
+                    <span class="walkthrough-dot" data-index="1"></span>
+                    <span class="walkthrough-dot" data-index="2"></span>
+                    <span class="walkthrough-dot" data-index="3"></span>
+                    <span class="walkthrough-dot" data-index="4"></span>
+                </div>
+                <div class="walkthrough-actions">
+                    <button type="button" id="walkthrough-prev-btn" class="walkthrough-btn-prev hidden">Back</button>
+                    <button type="button" id="walkthrough-next-btn" class="walkthrough-btn-next">Next</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Confirmation Dialog Modal -->

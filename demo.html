@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Web UI Bridge — Twitter Video Demo Showcase</title>
+    <link rel="stylesheet" href="chat.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* Demo Container & Control Bar */
+        body {
+            background: #060911;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: var(--font-family);
+        }
+
+        .demo-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 1050px;
+            padding: 24px;
+        }
+
+        .demo-controls-header {
+            width: 100%;
+            background: rgba(19, 27, 46, 0.95);
+            border: 1px solid #1e293b;
+            border-radius: 12px;
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+
+        .demo-title-group h1 {
+            font-size: 1.15rem;
+            color: #f1f5f9;
+            margin: 0 0 4px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .demo-title-group p {
+            margin: 0;
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        .demo-buttons-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .demo-btn {
+            background: #2563eb;
+            color: #ffffff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .demo-btn:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+        }
+
+        .demo-btn-secondary {
+            background: #1e293b;
+            color: #e2e8f0;
+            border: 1px solid #334155;
+        }
+
+        .demo-btn-secondary:hover {
+            background: #334155;
+        }
+
+        .demo-btn.recording {
+            background: #ef4444;
+            animation: pulse-rec 1.5s infinite;
+        }
+
+        @keyframes pulse-rec {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        /* Mock Brave Browser Window Frame */
+        .mock-browser-window {
+            width: 100%;
+            height: 720px;
+            background: #0b0f19;
+            border: 1px solid #1e293b;
+            border-radius: 14px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+        }
+
+        .browser-titlebar {
+            height: 42px;
+            background: #070b13;
+            border-bottom: 1px solid #1e293b;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            gap: 16px;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 8px;
+        }
+
+        .window-dot {
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+        }
+
+        .dot-red { background: #ff5f56; }
+        .dot-yellow { background: #ffbd2e; }
+        .dot-green { background: #27c93f; }
+
+        .browser-tabs {
+            display: flex;
+            gap: 6px;
+            flex: 1;
+        }
+
+        .browser-tab {
+            padding: 6px 14px;
+            background: #0f172a;
+            border-radius: 6px 6px 0 0;
+            color: #94a3b8;
+            font-size: 0.78rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid #1e293b;
+            border-bottom: none;
+        }
+
+        .browser-tab.active {
+            background: #131b2e;
+            color: #f1f5f9;
+        }
+
+        .browser-content {
+            flex: 1;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* App Container inside browser */
+        .mock-browser-window .app-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Video Captions Overlay for Twitter Demo */
+        .video-caption-overlay {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid #38bdf8;
+            border-radius: 8px;
+            padding: 10px 16px;
+            color: #f8fafc;
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 999;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            transition: opacity 0.3s ease;
+        }
+
+        .caption-badge {
+            background: #0284c7;
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+    </style>
+</head>
+<body data-theme="dark">
+    <div class="demo-wrapper">
+        <!-- Top Toolbar -->
+        <div class="demo-controls-header">
+            <div class="demo-title-group">
+                <h1>
+                    <span>AI Web UI Bridge — Twitter Demo Recorder</span>
+                </h1>
+                <p>Click "Play Demo" to run the automated discussion, or "Record Video" to export an MP4/WebM clip for Twitter/X.</p>
+            </div>
+            <div class="demo-buttons-group">
+                <button id="play-demo-btn" class="demo-btn">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    <span>Play Demo</span>
+                </button>
+                <button id="record-video-btn" class="demo-btn demo-btn-secondary">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4" fill="currentColor"></circle></svg>
+                    <span id="record-btn-text">Record Video Clip</span>
+                </button>
+                <button id="reset-demo-btn" class="demo-btn demo-btn-secondary">
+                    <span>Reset</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Simulated Window -->
+        <div class="mock-browser-window" id="capture-target">
+            <div class="browser-titlebar">
+                <div class="window-dots">
+                    <div class="window-dot dot-red"></div>
+                    <div class="window-dot dot-yellow"></div>
+                    <div class="window-dot dot-green"></div>
+                </div>
+                <div class="browser-tabs">
+                    <div class="browser-tab">
+                        <span>ChatGPT (chatgpt.com)</span>
+                    </div>
+                    <div class="browser-tab">
+                        <span>Claude (claude.ai)</span>
+                    </div>
+                    <div class="browser-tab">
+                        <span>Gemini (gemini.google.com)</span>
+                    </div>
+                    <div class="browser-tab active">
+                        <span>★ AI Web UI Bridge (Side Panel)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="browser-content">
+                <!-- Video Callout Badge -->
+                <div id="video-caption" class="video-caption-overlay" style="opacity: 0;">
+                    <span class="caption-badge" id="caption-tag">DEMO</span>
+                    <span id="caption-text">Welcome to AI Web UI Bridge</span>
+                </div>
+
+                <div class="app-container">
+                    <!-- Sidebar -->
+                    <aside class="sidebar">
+                        <div class="sidebar-top">
+                            <div class="brand-header">
+                                <div class="brand-orb">
+                                    <div class="orb-glow"></div>
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="orb-icon">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+                                        <path d="M2 12h20"></path>
+                                    </svg>
+                                </div>
+                                <div class="brand-text">
+                                    <h2 class="brand-title">Neural Bridge</h2>
+                                    <span class="brand-subtitle">PRECISION NEXUS V2.4</span>
+                                </div>
+                            </div>
+
+                            <button type="button" class="new-thread-btn">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                <span>New Thread</span>
+                            </button>
+
+                            <nav class="nav-menu">
+                                <div class="nav-item active">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                                    <span>Chat</span>
+                                </div>
+                                <div class="nav-item">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"></path><path d="M9 21h6"></path></svg>
+                                    <span>Personas</span>
+                                </div>
+                                <div class="nav-item">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                    <span>History</span>
+                                </div>
+                            </nav>
+                        </div>
+
+                        <!-- Active Personas -->
+                        <div class="sidebar-bottom">
+                            <div class="section-label">ACTIVE PERSONAS</div>
+                            <div class="personas-list">
+                                <div class="persona-row" id="p-alex">
+                                    <div class="persona-row-main">
+                                        <span class="persona-dot gpt-dot"></span>
+                                        <span class="persona-name">Alex (ChatGPT)</span>
+                                    </div>
+                                    <label class="ai-toggle-switch">
+                                        <input type="checkbox" checked disabled>
+                                        <span class="ai-toggle-slider gpt-toggle"></span>
+                                    </label>
+                                </div>
+                                <div class="persona-row" id="p-morgan">
+                                    <div class="persona-row-main">
+                                        <span class="persona-dot claude-dot"></span>
+                                        <span class="persona-name">Morgan (Claude)</span>
+                                    </div>
+                                    <label class="ai-toggle-switch">
+                                        <input type="checkbox" checked disabled>
+                                        <span class="ai-toggle-slider claude-toggle"></span>
+                                    </label>
+                                </div>
+                                <div class="persona-row" id="p-jordan">
+                                    <div class="persona-row-main">
+                                        <span class="persona-dot gemini-dot"></span>
+                                        <span class="persona-name">Jordan (Gemini)</span>
+                                    </div>
+                                    <label class="ai-toggle-switch">
+                                        <input type="checkbox" checked disabled>
+                                        <span class="ai-toggle-slider gemini-toggle"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <!-- Main Chat Area -->
+                    <main class="chat-area">
+                        <header class="chat-header">
+                            <div class="header-left">
+                                <h1 class="header-title">Aether Chat</h1>
+                            </div>
+                            <div class="header-right">
+                                <div class="status-indicator">
+                                    <span class="status-dot"></span>
+                                    <span id="demo-status">Ready</span>
+                                </div>
+                            </div>
+                        </header>
+
+                        <!-- Messages Container -->
+                        <div class="messages-container" id="demo-messages-container">
+                            <div class="welcome-message" id="demo-welcome">
+                                <div class="welcome-icon-wrapper">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12 2.1 7.1"></path><path d="M12 12l9.9 4.9"></path></svg>
+                                </div>
+                                <h3>Multi-Agent Neural Roundtable</h3>
+                                <p>Watch ChatGPT, Claude, and Gemini collaborate in a real-time roundtable discussion.</p>
+                            </div>
+                        </div>
+
+                        <!-- Composer -->
+                        <div class="composer-outer">
+                            <div class="composer-top-bar">
+                                <button type="button" id="demo-continue-btn" class="continue-top-btn hidden">
+                                    <span>Continue Round</span>
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
+                                </button>
+                            </div>
+                            <div class="composer-pill">
+                                <textarea id="demo-input" placeholder="Contribute to roundtable or tag with @..." rows="1" readonly></textarea>
+                                <div class="composer-actions">
+                                    <button type="button" id="demo-send-btn" class="send-circle-btn">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const input = document.getElementById('demo-input');
+        const sendBtn = document.getElementById('demo-send-btn');
+        const continueBtn = document.getElementById('demo-continue-btn');
+        const container = document.getElementById('demo-messages-container');
+        const welcome = document.getElementById('demo-welcome');
+        const statusEl = document.getElementById('demo-status');
+        const playBtn = document.getElementById('play-demo-btn');
+        const recordBtn = document.getElementById('record-video-btn');
+        const recordText = document.getElementById('record-btn-text');
+        const resetBtn = document.getElementById('reset-demo-btn');
+        const caption = document.getElementById('video-caption');
+        const captionTag = document.getElementById('caption-tag');
+        const captionText = document.getElementById('caption-text');
+
+        const DEMO_PROMPT = "Is TypeScript actually making developers more productive, or has type gymnastics gone too far?";
+
+        const RESPONSES = [
+            {
+                name: "ALEX (CHATGPT)",
+                cls: "chatgpt",
+                mono: "AL",
+                captionTag: "ROUNDTABLE 1/3",
+                captionText: "Alex (ChatGPT): Pragmatic engineering & refactoring safety",
+                text: "TypeScript unquestionably pays for itself at enterprise scale. When refactoring 50,000+ line codebases or managing cross-team API contracts, type inference eliminates entire classes of runtime regressions. 'Type gymnastics' only becomes a liability when developers prioritize esoteric generics over readable, explicit interfaces."
+            },
+            {
+                name: "MORGAN (CLAUDE)",
+                cls: "claude",
+                mono: "MO",
+                captionTag: "ROUNDTABLE 2/3",
+                captionText: "Morgan (Claude): Critiques Alex on compile-time cognitive load",
+                text: "Alex's refactoring point is sound, but it minimizes the severe cognitive tax. Teams often spend 25% of pull request review cycles debating type ergonomics and fighting the compiler on edge cases that never fail in production. Without strict linting guards against excessive conditional typing, TypeScript codebase velocity slows to a crawl."
+            },
+            {
+                name: "JORDAN (GEMINI)",
+                cls: "gemini",
+                mono: "JO",
+                captionTag: "ROUNDTABLE 3/3",
+                captionText: "Jordan (Gemini): Synthesizes with ecosystem benchmarks & data",
+                text: "Synthesizing Alex and Morgan's points: recent DHH and SvelteKit migrations to JSDoc illustrate Morgan's cognitive overhead critique without forfeiting Alex's type-safety requirement. The sweet spot isn't abandoning types, but adopting strict boundaries—relying on runtime validation like Zod at I/O boundaries and simple types internally."
+            }
+        ];
+
+        let isRunning = false;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+
+        function setCaption(tag, text) {
+            captionTag.textContent = tag;
+            captionText.textContent = text;
+            caption.style.opacity = '1';
+        }
+
+        function hideCaption() {
+            caption.style.opacity = '0';
+        }
+
+        function sleep(ms) {
+            return new Promise(r => setTimeout(r, ms));
+        }
+
+        async function typeText(text, speed = 25) {
+            input.value = '';
+            for (let i = 0; i < text.length; i++) {
+                input.value += text[i];
+                await sleep(speed);
+            }
+        }
+
+        function appendUserMessage(text) {
+            if (welcome) welcome.style.display = 'none';
+            const row = document.createElement('div');
+            row.className = 'message-row user-row';
+            row.innerHTML = `
+                <div class="message-card user-card">
+                    <div class="message-card-header">
+                        <span class="message-agent-name user-name">YOU</span>
+                        <span class="message-time">Just now</span>
+                    </div>
+                    <div class="message-body">${text}</div>
+                </div>
+            `;
+            container.appendChild(row);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function appendTypingIndicator(agentName) {
+            const row = document.createElement('div');
+            row.id = 'demo-typing';
+            row.className = 'typing-indicator-row';
+            row.innerHTML = `
+                <div class="typing-pill">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <span>${agentName} is formulating response...</span>
+                </div>
+            `;
+            container.appendChild(row);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            const el = document.getElementById('demo-typing');
+            if (el) el.remove();
+        }
+
+        async function streamAiResponse(resp) {
+            setCaption(resp.captionTag, resp.captionText);
+            statusEl.textContent = `Consulting ${resp.name}...`;
+            appendTypingIndicator(resp.name);
+            await sleep(1200);
+            removeTypingIndicator();
+
+            const row = document.createElement('div');
+            row.className = 'message-row ai-row';
+            row.innerHTML = `
+                <div class="message-avatar ${resp.cls}">${resp.mono}</div>
+                <div class="message-card ai-card ${resp.cls}-card">
+                    <div class="message-card-header">
+                        <span class="message-agent-name ${resp.cls}-name">${resp.name}</span>
+                        <span class="message-time">Just now</span>
+                    </div>
+                    <div class="message-body" id="stream-target"></div>
+                </div>
+            `;
+            container.appendChild(row);
+            container.scrollTop = container.scrollHeight;
+
+            const bodyTarget = row.querySelector('#stream-target');
+            bodyTarget.removeAttribute('id');
+
+            const words = resp.text.split(' ');
+            for (let i = 0; i < words.length; i++) {
+                bodyTarget.textContent += (i === 0 ? '' : ' ') + words[i];
+                container.scrollTop = container.scrollHeight;
+                await sleep(35);
+            }
+
+            statusEl.textContent = `${resp.name} responded.`;
+            await sleep(1000);
+        }
+
+        async function runDemo() {
+            if (isRunning) return;
+            isRunning = true;
+            playBtn.disabled = true;
+
+            setCaption("AI ROUNDTABLE", "Starting prompt injection...");
+            statusEl.textContent = "Entering topic...";
+            await sleep(800);
+
+            // Step 1: Type prompt
+            await typeText(DEMO_PROMPT, 20);
+            await sleep(400);
+
+            // Step 2: Click send
+            sendBtn.classList.add('pulse');
+            await sleep(200);
+            appendUserMessage(DEMO_PROMPT);
+            input.value = '';
+            sendBtn.classList.remove('pulse');
+
+            // Step 3: Stream ChatGPT
+            await streamAiResponse(RESPONSES[0]);
+
+            // Step 4: Stream Claude
+            await streamAiResponse(RESPONSES[1]);
+
+            // Step 5: Stream Gemini
+            await streamAiResponse(RESPONSES[2]);
+
+            // Step 6: Show round completion
+            statusEl.textContent = "Round 1 complete.";
+            continueBtn.classList.remove('hidden');
+            setCaption("ZERO API KEYS", "3 AI models debating in 1 conversation. 100% open source.");
+            await sleep(3000);
+
+            isRunning = false;
+            playBtn.disabled = false;
+
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+        }
+
+        // Screen / Canvas Recording with MediaRecorder API
+        recordBtn.addEventListener('click', async () => {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                return;
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { displaySurface: "browser", frameRate: 30 }
+                });
+
+                recordedChunks = [];
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) recordedChunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'ai-web-bridge-demo.webm';
+                    a.click();
+                    recordBtn.classList.remove('recording');
+                    recordText.textContent = "Record Video Clip";
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                mediaRecorder.start();
+                recordBtn.classList.add('recording');
+                recordText.textContent = "Recording... (Click to Stop)";
+
+                // Auto-trigger demo run
+                resetDemo();
+                setTimeout(() => runDemo(), 500);
+
+            } catch (err) {
+                alert("Screen capture was canceled or not supported by browser: " + err.message);
+            }
+        });
+
+        function resetDemo() {
+            container.innerHTML = `
+                <div class="welcome-message" id="demo-welcome">
+                    <div class="welcome-icon-wrapper">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12 2.1 7.1"></path><path d="M12 12l9.9 4.9"></path></svg>
+                    </div>
+                    <h3>Multi-Agent Neural Roundtable</h3>
+                    <p>Watch ChatGPT, Claude, and Gemini collaborate in a real-time roundtable discussion.</p>
+                </div>
+            `;
+            input.value = '';
+            statusEl.textContent = 'Ready';
+            continueBtn.classList.add('hidden');
+            hideCaption();
+            isRunning = false;
+            playBtn.disabled = false;
+        }
+
+        playBtn.addEventListener('click', runDemo);
+        resetBtn.addEventListener('click', resetDemo);
+    </script>
+</body>
+</html>

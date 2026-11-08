@@ -218,10 +218,22 @@ window.AIBridgeUtils = {
     },
 
     // Listen for messages from background script
-    setupMessageListener: function(injectLogicCallback) {
+    setupMessageListener: function(injectLogicCallback, refetchCallback) {
         chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             if (request.type === 'PING') {
                 sendResponse({ status: 'ok', url: window.location.href });
+                return true;
+            }
+            if (request.type === 'REFETCH_LATEST') {
+                console.log('[AIBridge] Received REFETCH_LATEST on', window.location.href);
+                try {
+                    const text = refetchCallback ? refetchCallback() : '';
+                    console.log('[AIBridge] Refetched text length:', text ? text.length : 0);
+                    sendResponse({ text: text || '' });
+                } catch (e) {
+                    console.error('[AIBridge] Refetch Error:', e);
+                    sendResponse({ error: e.message || String(e) });
+                }
                 return true;
             }
             if (request.type === 'INJECT_PROMPT') {
@@ -244,15 +256,23 @@ window.AIBridgeUtils = {
     // Extract delimited message block ([MESSAGE]...[/MESSAGE]) or fallback cleanly
     extractDelimitedText: function(rawText) {
         if (!rawText) return '';
-        // 1. Check for complete [MESSAGE]...[/MESSAGE] block
-        const completeMatch = rawText.match(/\[MESSAGE\]([\s\S]*?)\[\/MESSAGE\]/i);
-        if (completeMatch && completeMatch[1].trim()) {
-            return completeMatch[1].trim();
+        // 1. Check for complete [MESSAGE]...[/MESSAGE] blocks and take the LAST one
+        // (earlier blocks may be quoted context/history from previous turns in the prompt)
+        const allMatches = Array.from(rawText.matchAll(/\[MESSAGE\]([\s\S]*?)\[\/MESSAGE\]/gi));
+        if (allMatches.length > 0) {
+            const lastMatch = allMatches[allMatches.length - 1];
+            if (lastMatch && lastMatch[1] && lastMatch[1].trim()) {
+                return lastMatch[1].trim();
+            }
         }
-        // 2. Check for streaming/in-progress [MESSAGE] tag (tag started but not closed yet)
-        const partialMatch = rawText.match(/\[MESSAGE\]([\s\S]*)$/i);
-        if (partialMatch && partialMatch[1].trim()) {
-            return partialMatch[1].trim();
+        // 2. Check for streaming/in-progress [MESSAGE] tag (last opening tag without closing tag)
+        const lastOpenIdx = rawText.lastIndexOf('[MESSAGE]');
+        const lastCloseIdx = rawText.lastIndexOf('[/MESSAGE]');
+        if (lastOpenIdx !== -1 && lastOpenIdx > lastCloseIdx) {
+            const partial = rawText.substring(lastOpenIdx + '[MESSAGE]'.length).trim();
+            if (partial) {
+                return partial;
+            }
         }
         // 3. Fallback: Strip any lingering tags if present
         return rawText.replace(/\[MESSAGE\]/gi, '').replace(/\[\/MESSAGE\]/gi, '').trim();
